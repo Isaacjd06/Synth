@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Define your Synth theme variables here */
+@theme {
+  --color-synth-bg: #0b0b0b;
+  --color-synth-card: #151515;
+  --color-synth-border: #1f1f1f;
+  --color-synth-text-primary: #f5f5f5;
+  --color-synth-text-secondary: #9ca3af;
+  --color-synth-accent: #0229bf;
+  --color-synth-accentLight: #3d5af1;
+}
+
+/* Apply them globally */
+body {
+  background-color: var(--color-synth-bg);
+  color: var(--color-synth-text-primary);
+  font-family: system-ui, sans-serif;
+}

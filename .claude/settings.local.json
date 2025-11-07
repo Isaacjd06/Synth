@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(test:*)",
+      "Bash(netstat:*)",
+      "Bash(npx n8n:*)",
+      "WebSearch",
+      "Bash(node test-n8n-api.js:*)",
+      "Bash(node:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(ping:*)",
+      "Bash(nul)",
+      "Bash(if not exist \"C:\\synth\\app\\api\\workflows\\run\" mkdir \"C:\\synth\\app\\api\\workflows\\run\")",
+      "Bash(mkdir:*)",
+      "Bash(npm run build:*)",
+      "Bash(if not exist \"C:\\synth\\app\\api\\users\" mkdir \"C:\\synth\\app\\api\\users\")",
+      "Bash(if not exist \"C:\\synth\\app\\api\\workflows\" mkdir \"C:\\synth\\app\\api\\workflows\")",
+      "Bash(if not exist \"C:\\synth\\app\\api\\executions\" mkdir \"C:\\synth\\app\\api\\executions\")",
+      "Bash(if not exist \"C:\\synth\\app\\api\\connections\" mkdir \"C:\\synth\\app\\api\\connections\")",
+      "Bash(if not exist \"C:\\synth\\app\\api\\memory\" mkdir \"C:\\synth\\app\\api\\memory\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

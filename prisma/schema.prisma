@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  name         String
+  workflows    Workflow[]
+  connections  Connection[]
+  executions   Execution[]
+  memory       Memory[]
+  chatMessages ChatMessage[]   // 
+}
+
+model Workflow {
+  id              String   @id @default(uuid())
+  user_id         String
+  name            String
+  description     String?
+  intent          String?
+  trigger         Json?
+  actions         Json?
+  active          Boolean  @default(true)
+  n8n_workflow_id String?
+  created_at      DateTime @default(now())
+
+  user        User        @relation(fields: [user_id], references: [id])
+  executions  Execution[]
+}
+
+model Execution {
+  id           String   @id @default(uuid())
+  workflow_id  String
+  input_data   Json?
+  output_data  Json?
+  created_at   DateTime @default(now())
+  finished_at  DateTime?
+
+  workflow Workflow @relation(fields: [workflow_id], references: [id])
+}
+
+model Connection {
+  id            String   @id @default(uuid())
+  user_id       String
+  service_name  String
+  credentials   Json?
+  created_at    DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model Memory {
+  id         String   @id @default(uuid())
+  user_id    String
+  key        String
+  value      Json?
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  user_id     String
+  session_id  String?
+  role        String
+  message     String
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
