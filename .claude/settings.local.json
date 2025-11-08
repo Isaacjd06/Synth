@@ -20,7 +20,17 @@
       "Bash(if not exist \"C:\\synth\\app\\api\\workflows\" mkdir \"C:\\synth\\app\\api\\workflows\")",
       "Bash(if not exist \"C:\\synth\\app\\api\\executions\" mkdir \"C:\\synth\\app\\api\\executions\")",
       "Bash(if not exist \"C:\\synth\\app\\api\\connections\" mkdir \"C:\\synth\\app\\api\\connections\")",
-      "Bash(if not exist \"C:\\synth\\app\\api\\memory\" mkdir \"C:\\synth\\app\\api\\memory\")"
+      "Bash(if not exist \"C:\\synth\\app\\api\\memory\" mkdir \"C:\\synth\\app\\api\\memory\")",
+      "Bash(if not exist \"C:\\synth\\components\\dashboard\" mkdir \"C:\\synth\\components\\dashboard\")",
+      "Bash(components/dashboard/TopNav.tsx)",
+      "Bash(components/dashboard/Sidebar.tsx)",
+      "Bash(components/dashboard/WorkflowCard.tsx)",
+      "Bash(components/dashboard/ConnectionsCard.tsx)",
+      "Bash(components/dashboard/MemoryCard.tsx)",
+      "Bash(components/dashboard/ChatCard.tsx)",
+      "Bash(components/dashboard/DashboardGrid.tsx)",
+      "Bash(powershell -Command:*)",
+      "Bash(if not exist \"C:\\synth\\components\\layout\" mkdir \"C:\\synth\\components\\layout\")"
     ],
     "deny": [],
     "ask": []
