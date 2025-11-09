@@ -1,27 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { MessageSquare, BookOpen, Mail, MessageCircle } from "lucide-react";
+import { toast } from "sonner";
 import ConnectionsHeader from "@/components/connections/ConnectionsHeader";
 import ConnectionCard from "@/components/connections/ConnectionCard";
+import AddIntegrationCard from "@/components/connections/AddIntegrationCard";
 import ConnectionDialog from "@/components/connections/ConnectionDialog";
 import EmptyConnections from "@/components/connections/EmptyConnections";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { Toaster } from "@/components/ui/toaster";
 
 /**
- * Connections Page
+ * Connections Page - Premium Redesign
  *
- * Main page for managing third-party integrations.
+ * Modern SaaS integrations dashboard with professional styling.
  * Features:
- * - Grid layout of integration cards (responsive: 3 cols desktop, 1 mobile)
- * - Staggered fade-in animation for cards
- * - Connection dialog for authorizing services
- * - Empty state when no integrations exist
- * - Mock data for Slack, Notion, Gmail, Discord
+ * - Premium dark gradient cards with smooth animations
+ * - Responsive grid layout (1/2/3 columns)
+ * - Staggered fade-in animations
+ * - Toast notifications for actions
+ * - Status summary in header
+ * - "Add Integration" card for future expansions
+ * - Vercel/Linear-inspired design aesthetic
  */
 
-// Mock integration data
+// Integration data interface
 interface Integration {
   id: number;
   name: string;
@@ -30,6 +35,7 @@ interface Integration {
   icon: any;
 }
 
+// Mock integration data
 const initialIntegrations: Integration[] = [
   {
     id: 1,
@@ -68,7 +74,14 @@ export default function ConnectionsPage() {
     useState<Integration | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Handle connection/disconnection
+  // Calculate connection stats
+  const { connectedCount, disconnectedCount } = useMemo(() => {
+    const connected = integrations.filter((i) => i.status === "connected").length;
+    const disconnected = integrations.filter((i) => i.status === "disconnected").length;
+    return { connectedCount: connected, disconnectedCount: disconnected };
+  }, [integrations]);
+
+  // Handle connection/disconnection with toast notifications
   const handleConnect = (integration: Integration) => {
     if (integration.status === "disconnected") {
       // Open dialog for disconnected integrations
@@ -83,6 +96,11 @@ export default function ConnectionsPage() {
             : int
         )
       );
+
+      // Show toast notification
+      toast.success(`${integration.name} disconnected successfully`, {
+        description: "You can reconnect anytime from this page.",
+      });
     }
   };
 
@@ -96,7 +114,19 @@ export default function ConnectionsPage() {
             : int
         )
       );
+
+      // Show toast notification
+      toast.success(`${selectedIntegration.name} connected successfully`, {
+        description: "Your integration is now active.",
+      });
     }
+  };
+
+  // Handle add integration click
+  const handleAddIntegration = () => {
+    toast.info("Coming soon", {
+      description: "Additional integrations will be available soon.",
+    });
   };
 
   // Stagger animation variants
@@ -105,7 +135,8 @@ export default function ConnectionsPage() {
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1,
+        staggerChildren: 0.08,
+        delayChildren: 0.1,
       },
     },
   };
@@ -113,8 +144,14 @@ export default function ConnectionsPage() {
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-[#0a0a0a]">
+        {/* Toast notifications */}
+        <Toaster position="bottom-right" />
+
         {/* Header */}
-        <ConnectionsHeader />
+        <ConnectionsHeader
+          connectedCount={connectedCount}
+          disconnectedCount={disconnectedCount}
+        />
 
         {/* Main Content */}
         {integrations.length === 0 ? (
@@ -124,8 +161,9 @@ export default function ConnectionsPage() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-8"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-8"
           >
+            {/* Integration Cards */}
             {integrations.map((integration) => (
               <ConnectionCard
                 key={integration.id}
@@ -136,6 +174,9 @@ export default function ConnectionsPage() {
                 onConnect={() => handleConnect(integration)}
               />
             ))}
+
+            {/* Add Integration Card */}
+            <AddIntegrationCard onClick={handleAddIntegration} />
           </motion.div>
         )}
 

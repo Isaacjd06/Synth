@@ -8,17 +8,20 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String
-  workflows    Workflow[]
-  connections  Connection[]
+  id         String   @id @default(uuid())
+  email      String   @unique
+  name       String
+  created_at DateTime @default(now())
+
+  workflows    Workflows[]
   executions   Execution[]
+  connections  Connection[]
   memory       Memory[]
-  chatMessages ChatMessage[]   // 
+  chatMessages ChatMessage[]
+  synthUpdates SynthUpdates[]
 }
 
-model Workflow {
+model Workflows {
   id              String   @id @default(uuid())
   user_id         String
   name            String
@@ -30,27 +33,32 @@ model Workflow {
   n8n_workflow_id String?
   created_at      DateTime @default(now())
 
-  user        User        @relation(fields: [user_id], references: [id])
-  executions  Execution[]
+  user       User        @relation(fields: [user_id], references: [id])
+  executions Execution[]
+
+  @@map("workflows")
 }
 
 model Execution {
-  id           String   @id @default(uuid())
-  workflow_id  String
-  input_data   Json?
-  output_data  Json?
-  created_at   DateTime @default(now())
-  finished_at  DateTime?
+  id          String    @id @default(uuid())
+  workflow_id String
+  workflow    Workflows @relation(fields: [workflow_id], references: [id])
 
-  workflow Workflow @relation(fields: [workflow_id], references: [id])
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id])
+
+  input_data  Json?
+  output_data Json?
+  created_at  DateTime  @default(now())
+  finished_at DateTime?
 }
 
 model Connection {
-  id            String   @id @default(uuid())
-  user_id       String
-  service_name  String
-  credentials   Json?
-  created_at    DateTime @default(now())
+  id           String   @id @default(uuid())
+  user_id      String
+  service_name String
+  credentials  Json?
+  created_at   DateTime @default(now())
 
   user User @relation(fields: [user_id], references: [id])
 }
@@ -66,12 +74,24 @@ model Memory {
 }
 
 model ChatMessage {
-  id          String   @id @default(uuid())
-  user_id     String
-  session_id  String?
-  role        String
-  message     String
-  created_at  DateTime @default(now())
+  id         String   @id @default(uuid())
+  user_id    String
+  session_id String?
+  role       String
+  message    String
+  created_at DateTime @default(now())
 
   user User @relation(fields: [user_id], references: [id])
+}
+
+model SynthUpdates {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  title      String   @default("Synth Updates")
+  summary    String
+  insights   Json
+  created_at DateTime @default(now())
+
+  @@map("synth_updates")
 }

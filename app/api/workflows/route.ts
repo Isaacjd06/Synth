@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("user_id");
 
     // Filter by user_id if provided
-    const workflows = await prisma.workflow.findMany({
+    const workflows = await prisma.workflows.findMany({
       where: userId ? { user_id: userId } : undefined,
       orderBy: { created_at: "desc" },
       include: {
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const workflow = await prisma.workflow.create({
+    const workflow = await prisma.workflows.create({
       data: {
         user_id: body.user_id,
         name: body.name,
@@ -116,7 +116,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if workflow exists
-    const existingWorkflow = await prisma.workflow.findUnique({
+    const existingWorkflow = await prisma.workflows.findUnique({
       where: { id: body.id },
     });
 
@@ -127,7 +127,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const workflow = await prisma.workflow.update({
+    const workflow = await prisma.workflows.update({
       where: { id: body.id },
       data: {
         name: body.name,
@@ -164,7 +164,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if workflow exists
-    const existingWorkflow = await prisma.workflow.findUnique({
+    const existingWorkflow = await prisma.workflows.findUnique({
       where: { id },
     });
 
@@ -175,7 +175,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.workflow.delete({
+    await prisma.workflows.delete({
       where: { id },
     });
 

@@ -3,8 +3,8 @@ import prisma from "@/lib/prisma";
 
 // Type definitions
 interface CreateUserBody {
-  email?: string;
-  name?: string;
+  email: string;
+  name: string;
 }
 
 interface UpdateUserBody {
@@ -33,10 +33,10 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateUserBody = await request.json();
 
-    // Validate required fields (email is optional in schema, but you can enforce it here if needed)
-    if (!body.email && !body.name) {
+    // Validate required fields
+    if (!body.email || !body.name) {
       return NextResponse.json(
-        { success: false, error: "At least email or name is required" },
+        { success: false, error: "email and name are required" },
         { status: 400 }
       );
     }

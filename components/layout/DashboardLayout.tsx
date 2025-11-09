@@ -11,6 +11,9 @@ import { TopNav } from "../dashboard/TopNav";
  * Persistent layout wrapper for all dashboard pages.
  * Contains the sidebar and top navigation that remain visible across all routes.
  * Provides smooth page transitions and maintains Synth's dark aesthetic.
+ *
+ * The sidebar is fixed positioned and takes up 80px (collapsed) width.
+ * Main content area has left padding to account for the sidebar.
  */
 
 interface DashboardLayoutProps {
@@ -19,12 +22,12 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0a]">
-      {/* Persistent Sidebar */}
+    <div className="h-screen w-full overflow-hidden bg-[#0a0a0a]">
+      {/* Persistent Fixed Sidebar - Always visible as slim icon column */}
       <Sidebar />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-[#0229bf]/20">
+      {/* Main Content Area - Offset by sidebar width */}
+      <div className="ml-[80px] h-full flex flex-col overflow-hidden">
         {/* Top Navigation */}
         <TopNav />
 

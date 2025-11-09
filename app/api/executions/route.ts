@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify workflow exists
-    const workflow = await prisma.workflow.findUnique({
+    const workflow = await prisma.workflows.findUnique({
       where: { id: body.workflow_id },
     });
 
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
     const execution = await prisma.execution.create({
       data: {
         workflow_id: body.workflow_id,
+        user_id: workflow.user_id,
         input_data: body.input_data,
         output_data: body.output_data,
         finished_at: body.finished_at ? new Date(body.finished_at) : null,

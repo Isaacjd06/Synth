@@ -2,18 +2,19 @@
 
 import { motion } from "framer-motion";
 import { LucideIcon } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 /**
- * ConnectionCard Component
+ * ConnectionCard Component - Premium Design
  *
- * Individual integration card displaying service information and connection status.
+ * High-end integration card with professional styling.
  * Features:
- * - Service logo/icon, name, and description
- * - Status indicator (green dot for connected, gray for disconnected)
- * - Connect/Disconnect button
- * - Hover animations with blue glow effect
- * - Scale animation on hover
+ * - Dark gradient background (from-[#0c0c0c] to-[#070707])
+ * - Subtle blue glow on hover
+ * - Smooth scale and border animations
+ * - Status indicator with tooltip
+ * - Glowing icon when connected
+ * - Premium shadcn/ui Button components
  */
 
 interface ConnectionCardProps {
@@ -37,55 +38,77 @@ export default function ConnectionCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      whileHover={{ scale: 1.03 }}
-      className="group"
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      whileHover={{ scale: 1.01 }}
+      className="group h-full"
     >
-      <Card className="bg-neutral-900/70 border border-neutral-800 rounded-2xl p-6 h-full flex flex-col hover:shadow-[0_0_20px_-5px_#0229bf80] transition-all duration-200 ease-in-out">
-        {/* Icon and Status */}
+      <div className="relative h-full bg-gradient-to-b from-[#0c0c0c] to-[#070707] border border-zinc-800 rounded-xl p-6 flex flex-col hover:border-[#0229bf] hover:shadow-[0_0_15px_rgba(2,41,191,0.2)] transition-all duration-200 ease-in-out">
+        {/* Header: Icon and Status */}
         <div className="flex items-start justify-between mb-4">
-          <div className="p-3 bg-neutral-800/50 rounded-xl border border-neutral-700/50 group-hover:border-[#0229bf]/50 transition-colors duration-200">
-            <Icon className="w-6 h-6 text-[#0229bf]" />
+          {/* Icon */}
+          <div
+            className={`p-3 bg-zinc-900/50 rounded-lg border transition-all duration-200 ${
+              isConnected
+                ? "border-[#0229bf]/30 shadow-[0_0_10px_rgba(2,41,191,0.15)]"
+                : "border-zinc-800"
+            } group-hover:border-[#0229bf]/50`}
+          >
+            <Icon
+              className={`w-12 h-12 transition-all duration-200 ${
+                isConnected
+                  ? "text-[#0229bf] drop-shadow-[0_0_8px_rgba(2,41,191,0.5)]"
+                  : "text-zinc-600 group-hover:text-[#0229bf]"
+              }`}
+            />
           </div>
 
           {/* Status Indicator */}
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-900/80 border border-zinc-800"
+            title={isConnected ? "Connected" : "Not connected"}
+          >
             <motion.div
-              animate={isConnected ? { scale: [1, 1.2, 1] } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-              className={`w-2 h-2 rounded-full ${
-                isConnected ? "bg-green-500" : "bg-gray-500"
+              animate={
+                isConnected
+                  ? {
+                      scale: [1, 1.3, 1],
+                      opacity: [1, 0.6, 1],
+                    }
+                  : {}
+              }
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+              className={`w-1.5 h-1.5 rounded-full ${
+                isConnected ? "bg-green-500" : "bg-zinc-600"
               }`}
             />
-            <span className="text-xs text-[#9ca3af] font-medium">
-              {isConnected ? "Connected" : "Not connected"}
-            </span>
           </div>
         </div>
 
         {/* Name and Description */}
-        <div className="flex-1 mb-4">
-          <h3 className="text-lg font-semibold text-[#f5f5f5] mb-2">
-            {name}
-          </h3>
-          <p className="text-sm text-[#9ca3af] leading-relaxed">
+        <div className="flex-1 mb-5">
+          <h3 className="text-lg font-semibold text-white mb-2">{name}</h3>
+          <p className="text-sm text-zinc-500 leading-relaxed">
             {description}
           </p>
         </div>
 
         {/* Action Button */}
-        <motion.button
-          whileTap={{ scale: 0.98 }}
+        <Button
           onClick={onConnect}
-          className={`w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+          variant={isConnected ? "outline" : "default"}
+          className={`w-full transition-all duration-150 ${
             isConnected
-              ? "bg-neutral-800 text-[#f5f5f5] hover:bg-neutral-700 border border-neutral-700"
-              : "bg-[#0229bf] text-white hover:bg-[#0229bf]/90 shadow-[0_0_15px_-3px_#0229bf80]"
+              ? "bg-transparent border-zinc-800 text-zinc-300 hover:bg-zinc-900/50 hover:text-white hover:border-zinc-700"
+              : "bg-[#0229bf] text-white hover:bg-[#0229bf]/90 shadow-[0_0_12px_rgba(2,41,191,0.3)] hover:shadow-[0_0_18px_rgba(2,41,191,0.4)]"
           }`}
         >
           {isConnected ? "Disconnect" : "Connect"}
-        </motion.button>
-      </Card>
+        </Button>
+      </div>
     </motion.div>
   );
 }

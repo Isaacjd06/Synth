@@ -30,7 +30,14 @@
       "Bash(components/dashboard/ChatCard.tsx)",
       "Bash(components/dashboard/DashboardGrid.tsx)",
       "Bash(powershell -Command:*)",
-      "Bash(if not exist \"C:\\synth\\components\\layout\" mkdir \"C:\\synth\\components\\layout\")"
+      "Bash(if not exist \"C:\\synth\\components\\layout\" mkdir \"C:\\synth\\components\\layout\")",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm install:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma:*)",
+      "Bash(dir:*)",
+      "Bash(if not exist \"prisma\\migrations\" mkdir \"prisma\\migrations\")",
+      "Bash(del appapibrainupdateroute.ts 2)"
     ],
     "deny": [],
     "ask": []

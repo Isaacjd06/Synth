@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { WorkflowHeader } from "@/components/workflows/WorkflowHeader";
-import { WorkflowCard } from "@/components/workflows/WorkflowCard";
-import { EmptyState } from "@/components/workflows/EmptyState";
+import { WorkflowListPanel } from "@/components/workflows/WorkflowListPanel";
+import { WorkflowCanvas } from "@/components/workflows/WorkflowCanvas";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
 // Mock workflow data - will be replaced with actual data from Supabase + n8n later
@@ -73,131 +72,31 @@ const mockWorkflows = [
 ];
 
 /**
- * Workflows Page - Main dashboard for managing automation workflows
- * Displays workflow cards in a responsive grid with search and filter capabilities
+ * Workflows Page - Dual-panel layout for managing automation workflows
+ * Left panel: Workflow list with hover states
+ * Right panel: Canvas area with workflow visualization and dotted grid
  */
 export default function WorkflowsPage() {
-  const [workflows, setWorkflows] = useState(mockWorkflows);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | string | null>(null);
 
-  // Filter workflows based on search and status
-  const filteredWorkflows = workflows.filter((workflow) => {
-    const matchesSearch =
-      workflow.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      workflow.description.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === "all" ||
-      workflow.status.toLowerCase() === filterStatus;
-
-    return matchesSearch && matchesFilter;
-  });
-
-  // Event handlers
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
+  const handleSelectWorkflow = (id: number | string) => {
+    setSelectedWorkflowId(id);
   };
 
-  const handleFilterChange = (filter: string) => {
-    setFilterStatus(filter);
-  };
-
-  const handleCreateWorkflow = () => {
-    console.log("Create workflow clicked");
-    // TODO: Navigate to workflow builder or open modal
-  };
-
-  const handleViewWorkflow = (id: number | string) => {
-    console.log("View workflow:", id);
-    // TODO: Navigate to workflow detail page
-  };
-
-  const handleEditWorkflow = (id: number | string) => {
-    console.log("Edit workflow:", id);
-    // TODO: Navigate to workflow editor
-  };
-
-  const handleRunWorkflow = (id: number | string) => {
-    console.log("Run workflow:", id);
-    // TODO: Trigger workflow execution via API
-  };
-
-  const handleDeleteWorkflow = (id: number | string) => {
-    console.log("Delete workflow:", id);
-    // TODO: Show confirmation dialog and delete via API
-    setWorkflows(workflows.filter((w) => w.id !== id));
-  };
+  const selectedWorkflow = mockWorkflows.find((w) => w.id === selectedWorkflowId) || null;
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-[#0a0a0a]">
-        {/* Header */}
-        <WorkflowHeader
-          onSearch={handleSearch}
-          onCreateWorkflow={handleCreateWorkflow}
-          onFilterChange={handleFilterChange}
+      <div className="h-full flex bg-[#0a0a0a]">
+        {/* Left Panel - Workflow List */}
+        <WorkflowListPanel
+          workflows={mockWorkflows}
+          selectedWorkflowId={selectedWorkflowId}
+          onSelectWorkflow={handleSelectWorkflow}
         />
 
-        {/* Main Content */}
-        <div className="p-8">
-          {filteredWorkflows.length === 0 ? (
-            // Empty State
-            <EmptyState onCreateWorkflow={handleCreateWorkflow} />
-          ) : (
-            // Workflow Grid
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-            >
-              {filteredWorkflows.map((workflow, index) => (
-                <WorkflowCard
-                  key={workflow.id}
-                  workflow={workflow}
-                  index={index}
-                  onView={handleViewWorkflow}
-                  onEdit={handleEditWorkflow}
-                  onRun={handleRunWorkflow}
-                  onDelete={handleDeleteWorkflow}
-                />
-              ))}
-            </motion.div>
-          )}
-        </div>
-
-        {/* Background Gradient Effects */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-          {/* Top gradient */}
-          <motion.div
-            className="absolute top-0 left-1/4 w-96 h-96 bg-[#0229bf]/5 rounded-full blur-3xl"
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          />
-
-          {/* Bottom gradient */}
-          <motion.div
-            className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#0229bf]/5 rounded-full blur-3xl"
-            animate={{
-              scale: [1.2, 1, 1.2],
-              opacity: [0.5, 0.3, 0.5],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: "easeInOut",
-              delay: 4,
-            }}
-          />
-        </div>
+        {/* Right Panel - Workflow Canvas */}
+        <WorkflowCanvas selectedWorkflow={selectedWorkflow} />
       </div>
     </DashboardLayout>
   );

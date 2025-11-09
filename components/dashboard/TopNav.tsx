@@ -10,7 +10,7 @@ interface TopNavProps {
 
 export function TopNav({ title = "Dashboard" }: TopNavProps) {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-[#0b0b0b]/80 backdrop-blur-md border-b border-[#1f1f1f]">
+    <nav className="h-16 bg-[#0b0b0b]/80 backdrop-blur-md border-b border-[#1f1f1f] flex-shrink-0">
       <div className="flex items-center justify-between h-full px-6">
         {/* Left section - Logo */}
         <div className="flex items-center gap-3">

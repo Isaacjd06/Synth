@@ -24,8 +24,12 @@ export function Sidebar() {
     <motion.aside
       initial={{ width: 80 }}
       animate={{ width: isExpanded ? 240 : 80 }}
-      transition={{ duration: 0.3, ease: "easeInOut" }}
-      className="fixed left-0 top-16 bottom-0 bg-[#0b0b0b] border-r border-[#1f1f1f] z-40"
+      transition={{ duration: 0.15, ease: "easeInOut" }}
+      className={cn(
+        "fixed left-0 top-0 bottom-0 bg-[#0b0b0b] border-r border-[#1f1f1f] z-50",
+        "transition-shadow duration-150",
+        isExpanded && "shadow-[4px_0_24px_rgba(2,41,191,0.15)]"
+      )}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
