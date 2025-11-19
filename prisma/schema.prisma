@@ -8,31 +8,39 @@ datasource db {
 }
 
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  name         String
-  created_at   DateTime       @default(now())
-  chatMessages ChatMessage[]
-  connections  Connection[]
-  executions   Execution[]
-  memory       Memory[]
-  synthUpdates SynthUpdates[]
-  workflows    Workflows[]
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  name                String
+  created_at          DateTime             @default(now())
+  chatMessages        ChatMessage[]
+  connections         Connection[]
+  executions          Execution[]
+  workflows           Workflows[]
+  memoryCategories    MemoryCategory[]
+  memoryItems         MemoryItem[]
+  knowledge           Knowledge[]
+  memoryActionsTaken  MemoryActionsTaken[]
+  memoryStrategies    MemoryStrategy[]
+  memoryAutomations   MemoryAutomation[]
+  memoryPainPoints    MemoryPainPoint[]
+  memoryOpportunities MemoryOpportunity[]
+  memoryRoadmaps      MemoryRoadmap[]
 }
 
 model Workflows {
-  id              String      @id @default(uuid())
-  user_id         String
-  name            String
-  description     String?
-  intent          String?
-  trigger         Json?
-  actions         Json?
-  active          Boolean     @default(true)
-  n8n_workflow_id String?
-  created_at      DateTime    @default(now())
-  executions      Execution[]
-  user            User        @relation(fields: [user_id], references: [id])
+  id                String             @id @default(uuid())
+  user_id           String
+  name              String
+  description       String?
+  intent            String?
+  trigger           Json?
+  actions           Json?
+  active            Boolean            @default(true)
+  n8n_workflow_id   String?
+  created_at        DateTime           @default(now())
+  executions        Execution[]
+  memoryAutomations MemoryAutomation[]
+  user              User               @relation(fields: [user_id], references: [id])
 
   @@map("workflows")
 }
@@ -58,33 +66,106 @@ model Connection {
   user         User     @relation(fields: [user_id], references: [id])
 }
 
-model Memory {
-  id         String   @id @default(uuid())
-  user_id    String
-  key        String
-  value      Json?
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id])
-}
-
 model ChatMessage {
   id         String   @id @default(uuid())
   user_id    String
-  session_id String?
   role       String
   message    String
   created_at DateTime @default(now())
   user       User     @relation(fields: [user_id], references: [id])
 }
 
-model SynthUpdates {
-  id         String   @id(map: "BrainReport_pkey") @default(uuid())
-  user_id    String
-  title      String   @default("Synth Brain Report")
-  summary    String
-  insights   Json
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], map: "BrainReport_user_id_fkey")
+model MemoryCategory {
+  id          String       @id @default(uuid())
+  user_id     String
+  name        String
+  description String?
+  created_at  DateTime     @default(now())
+  user        User         @relation(fields: [user_id], references: [id])
+  items       MemoryItem[]
+}
 
-  @@map("synth_updates")
+model MemoryItem {
+  id          String         @id @default(uuid())
+  user_id     String
+  category_id String
+  content     String
+  embedding   Json?
+  created_at  DateTime       @default(now())
+  user        User           @relation(fields: [user_id], references: [id])
+  category    MemoryCategory @relation(fields: [category_id], references: [id])
+}
+
+model Knowledge {
+  id         String   @id @default(uuid())
+  user_id    String
+  title      String
+  content    String? // Used if the user pastes text
+  file_url   String? // Used if the user uploads a file
+  file_type  String? // pdf, txt, md, docx, etc.
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model MemoryActionsTaken {
+  id          String   @id @default(uuid())
+  user_id     String
+  action_type String // e.g., "workflow_created", "workflow_updated", "suggestion_given"
+  description String?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model MemoryStrategy {
+  id         String   @id @default(uuid())
+  user_id    String
+  title      String
+  content    String
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model MemoryAutomation {
+  id          String   @id @default(uuid())
+  user_id     String
+  workflow_id String?
+  title       String?
+  description String?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  user     User       @relation(fields: [user_id], references: [id])
+  workflow Workflows? @relation(fields: [workflow_id], references: [id])
+}
+
+model MemoryPainPoint {
+  id         String   @id @default(uuid())
+  user_id    String
+  content    String
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model MemoryOpportunity {
+  id         String   @id @default(uuid())
+  user_id    String
+  content    String
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model MemoryRoadmap {
+  id         String   @id @default(uuid())
+  user_id    String
+  title      String
+  content    String
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
 }
