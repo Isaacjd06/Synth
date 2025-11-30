@@ -1,0 +1,55 @@
+"use server";
+
+import { NextResponse } from "next/server";
+import { validateWorkflowPlan } from "@/lib/workflow/validator";
+import { buildN8nWorkflowFromPlan } from "@/lib/workflow/builder";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    const { plan } = body;
+
+    if (!plan) {
+      return NextResponse.json(
+        { error: "Missing 'plan' in request body." },
+        { status: 400 }
+      );
+    }
+
+    // 1. Validate the plan using your full validator
+    const validation = validateWorkflowPlan(plan);
+
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Workflow plan validation failed.",
+          details: validation.details || validation.error,
+        },
+        { status: 200 }
+      );
+    }
+
+    const validPlan = validation.plan;
+
+    // 2. Build the n8n workflow JSON (but do NOT deploy it)
+    const n8nWorkflowJson = buildN8nWorkflowFromPlan(validPlan);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        message: "Dry-run succeeded. Plan is valid.",
+        plan: validPlan,
+        n8nWorkflow: n8nWorkflowJson,
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("DRY RUN ERROR:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
