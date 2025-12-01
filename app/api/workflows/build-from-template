@@ -1,0 +1,105 @@
+"use server";
+
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+import { templates } from "@/lib/workflow/templates";
+import { validateWorkflowPlan } from "@/lib/workflow/validator";
+
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    const { templateId, inputs, name, description } = body;
+
+    // 1. Basic required fields
+    if (!templateId || !name || !inputs) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing required fields: templateId, name, and inputs are required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Load template
+    const template = templates[templateId];
+    if (!template) {
+      return NextResponse.json(
+        { error: `No template found with id '${templateId}'.` },
+        { status: 404 }
+      );
+    }
+
+    // 3. Validate inputs (simple MVP validation)
+    for (const field of template.requiredInputs) {
+      if (!(field.key in inputs)) {
+        return NextResponse.json(
+          {
+            error: `Missing required input '${field.key}' for template '${templateId}'.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 4. Generate workflow plan from template
+    let plan;
+    try {
+      plan = template.buildPlan(inputs);
+    } catch (err: any) {
+      return NextResponse.json(
+        {
+          error: "Template failed to build workflow plan.",
+          details: err?.message || err,
+        },
+        { status: 500 }
+      );
+    }
+
+    // 5. Validate plan with your validator
+    const validation = validateWorkflowPlan(plan);
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          error: "Workflow plan validation failed.",
+          details: validation.details || validation.error,
+        },
+        { status: 400 }
+      );
+    }
+
+    const validPlan = validation.plan;
+
+    // 6. Save the workflow into Neon DB
+    const created = await prisma.workflows.create({
+      data: {
+        user_id: SYSTEM_USER_ID,
+        name,
+        description: description || template.name,
+        intent: validPlan.intent || "",
+        trigger: validPlan.trigger,
+        actions: validPlan.actions,
+        active: false,
+        n8n_workflow_id: null,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        workflow: created,
+      },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("BUILD-FROM-TEMPLATE ERROR:", err);
+    return NextResponse.json(
+      { error: err.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

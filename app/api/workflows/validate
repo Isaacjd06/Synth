@@ -1,0 +1,48 @@
+"use server";
+
+import { NextResponse } from "next/server";
+import { validateWorkflowPlan } from "@/lib/workflow/validator";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { plan } = body;
+
+    if (!plan) {
+      return NextResponse.json(
+        { error: "Missing 'plan' in request body." },
+        { status: 400 }
+      );
+    }
+
+    // Run validation
+    const validation = validateWorkflowPlan(plan);
+
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Workflow plan validation failed.",
+          details: validation.details || validation.error,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Plan is valid
+    return NextResponse.json(
+      {
+        ok: true,
+        message: "Workflow plan is valid.",
+        plan: validation.plan,
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("VALIDATE PLAN ERROR:", error);
+    return NextResponse.json(
+      { error: error.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

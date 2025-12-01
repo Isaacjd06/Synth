@@ -3,11 +3,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import { validateWorkflowPlan } from "@/lib/workflow/validator";
+import { buildN8nWorkflowFromPlan } from "@/lib/workflow/builder";
+import { deployWorkflow } from "@/lib/n8n/deployWorkflow";
 
-// n8n environment variables
-const N8N_URL = process.env.N8N_API_URL!;
-const N8N_API_KEY = process.env.N8N_API_KEY!;
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function POST(req: Request) {
   try {
@@ -20,14 +20,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!N8N_URL || !N8N_API_KEY) {
-      return NextResponse.json(
-        { error: "Missing n8n environment variables." },
-        { status: 500 }
-      );
-    }
-
-    // 1. Fetch workflow from Neon
+    // 1. Fetch workflow
     const workflow = await prisma.workflows.findFirst({
       where: {
         id,
@@ -42,84 +35,64 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Build n8n workflow JSON (MVP)
-    // For now you can extend this later when the Brain generates full workflows
-    const n8nBody = {
+    // Ensure these fields exist for validation/building
+    if (!workflow.trigger || !workflow.actions) {
+      return NextResponse.json(
+        {
+          error:
+            "This workflow does not have trigger/actions defined yet and cannot be activated.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Validate stored workflow_plan
+    const rawPlan = {
       name: workflow.name,
-      active: true,
-      settings: {},
-      nodes: [
-        {
-          id: "1",
-          name: "Webhook",
-          type: "n8n-nodes-base.webhook",
-          typeVersion: 1,
-          position: [200, 300],
-          parameters: {
-            httpMethod: "POST",
-            path: `synth-${workflow.id}`,
-            responseMode: "onReceived",
-            options: {},
-          },
-        },
-        {
-          id: "2",
-          name: "Set",
-          type: "n8n-nodes-base.set",
-          typeVersion: 2,
-          position: [500, 300],
-          parameters: {
-            values: {
-              string: [
-                {
-                  name: "message",
-                  value: `Workflow ${workflow.name} executed successfully`,
-                },
-              ],
-            },
-          },
-        },
-      ],
-      connections: {
-        Webhook: {
-          main: [
-            [
-              {
-                node: "Set",
-                type: "main",
-                index: 0,
-              },
-            ],
-          ],
-        },
-      },
+      description: workflow.description || "",
+      intent: workflow.intent || "",
+      trigger: workflow.trigger, // JSONB field
+      actions: workflow.actions, // JSONB array
+      metadata: {},
     };
 
-    // 3. Deploy to n8n
-    const res = await fetch(`${N8N_URL}/workflows`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-N8N-API-KEY": N8N_API_KEY,
-      },
-      body: JSON.stringify(n8nBody),
-    });
+    const validation = validateWorkflowPlan(rawPlan);
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      console.error("n8n ERROR:", data);
+    if (!validation.ok) {
       return NextResponse.json(
-        { error: "Failed to activate workflow in n8n.", details: data },
+        {
+          error: "Workflow validation failed.",
+          details: validation.details || validation.error,
+        },
+        { status: 400 }
+      );
+    }
+
+    const plan = validation.plan;
+
+    // 3. Build n8n workflow JSON
+    const n8nWorkflow = buildN8nWorkflowFromPlan(plan);
+
+    // 4. Deploy to n8n
+    const deploy = await deployWorkflow(n8nWorkflow);
+
+    if (!deploy.ok) {
+      return NextResponse.json(
+        {
+          error: "Failed to deploy workflow to n8n.",
+          details: deploy.details || deploy.error,
+        },
         { status: 500 }
       );
     }
 
-    // 4. Save n8n workflow ID in Neon
+    const n8nId = deploy.workflowId;
+
+    // 5. Save n8n workflow ID in Neon
     await prisma.workflows.update({
       where: { id },
       data: {
-        n8n_workflow_id: data.id.toString(),
+        n8n_workflow_id: n8nId.toString(),
         active: true,
       },
     });
@@ -128,11 +101,10 @@ export async function POST(req: Request) {
       {
         success: true,
         message: "Workflow activated successfully.",
-        n8n_workflow_id: data.id,
+        n8n_workflow_id: n8nId,
       },
       { status: 200 }
     );
-
   } catch (error: any) {
     console.error("WORKFLOW ACTIVATE ERROR:", error);
     return NextResponse.json(
