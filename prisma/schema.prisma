@@ -169,3 +169,17 @@ model MemoryRoadmap {
 
   user User @relation(fields: [user_id], references: [id])
 }
+
+model CoreFramework {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  category    String              // e.g. "icp", "offer", "funnel_acquisition"
+  tags        String[]            // e.g. ["b2b", "agency", "early_stage"]
+  content     Json                // full structured framework JSON
+  sourceType  String              // "book" | "article" | "operator" | "internal"
+  sourceRef   String?             // URL, book ref, or note
+  confidence  Float   @default(0.9)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
