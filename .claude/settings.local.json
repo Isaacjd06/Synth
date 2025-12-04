@@ -37,7 +37,8 @@
       "Bash(npx prisma:*)",
       "Bash(dir:*)",
       "Bash(if not exist \"prisma\\migrations\" mkdir \"prisma\\migrations\")",
-      "Bash(del appapibrainupdateroute.ts 2)"
+      "Bash(del appapibrainupdateroute.ts 2)",
+      "Bash(if not exist \"lib\\knowledge\\strategy\\gtm\" mkdir \"lib\\knowledge\\strategy\\gtm\")"
     ],
     "deny": [],
     "ask": []

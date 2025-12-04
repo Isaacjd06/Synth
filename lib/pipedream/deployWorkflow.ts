@@ -1,11 +1,32 @@
 // lib/pipedream/deployWorkflow.ts
 
 import { WorkflowPlan } from "../workflow/types";
-import { createWorkflow, PipedreamWorkflow } from "../pipedreamClient";
+import { createWorkflow, setWorkflowActive, WorkflowBlueprint } from "../pipedreamClient";
 
 export type DeployResult =
   | { ok: true; workflowId: string }
   | { ok: false; error: string; details?: any };
+
+/**
+ * Convert WorkflowPlan to WorkflowBlueprint format
+ * This is an intermediate step before converting to Pipedream format
+ */
+function planToBlueprint(plan: WorkflowPlan): WorkflowBlueprint {
+  return {
+    name: plan.name,
+    description: plan.description,
+    intent: plan.intent || "",
+    trigger: {
+      type: plan.trigger.type,
+      config: plan.trigger.config || {},
+    },
+    actions: plan.actions.map((action) => ({
+      id: action.id, // Required: Include id field for step identification
+      type: action.type,
+      config: action.params || {}, // Map params to config
+    })),
+  };
+}
 
 /**
  * Deploy a workflow to Pipedream by converting WorkflowPlan to Pipedream format
@@ -27,22 +48,10 @@ export async function deployWorkflow(
   }
 
   try {
-    // Convert WorkflowPlan to Pipedream blueprint format
-    const blueprint = {
-      name: plan.name,
-      description: plan.description || plan.intent,
-      intent: plan.intent || "",
-      trigger: {
-        type: plan.trigger.type,
-        config: plan.trigger.config || {},
-      },
-      actions: plan.actions.map((action) => ({
-        id: action.id,
-        type: action.type,
-        config: action.params || {},
-      })),
-    };
+    // Convert WorkflowPlan to blueprint format
+    const blueprint = planToBlueprint(plan);
 
+    // Create workflow in Pipedream
     const workflow = await createWorkflow(blueprint);
 
     if (!workflow?.id) {
@@ -53,6 +62,10 @@ export async function deployWorkflow(
         details: workflow,
       };
     }
+
+    // Activate the workflow in Pipedream
+    // Note: Workflows are created inactive by default for safety
+    await setWorkflowActive(workflow.id, true);
 
     return {
       ok: true,

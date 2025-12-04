@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { executeWorkflow } from "@/lib/pipedreamClient";
+import { runWorkflow } from "@/lib/pipedream/runWorkflow";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -17,7 +17,14 @@ export async function OPTIONS() {
 
 export async function POST(request: Request) {
   try {
-    const { id } = await request.json();
+    const { id, inputData } = await request.json();
+
+    if (!id) {
+      return NextResponse.json(
+        { ok: false, error: "Workflow ID is required" },
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
+    }
 
     // 1. Fetch workflow from Neon with user_id security scope
     const workflow = await prisma.workflows.findFirst({
@@ -44,15 +51,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Execute workflow in Pipedream
-    const execution = await executeWorkflow(pipedreamWorkflowId, {});
+    // 3. Execute workflow in Pipedream using wrapper with proper error handling
+    const runResult = await runWorkflow(pipedreamWorkflowId, inputData || {});
 
-    // 4. Log execution to Neon database
+    if (!runResult.ok) {
+      // Log failed execution attempt
+      await prisma.execution.create({
+        data: {
+          workflow_id: id,
+          user_id: workflow.user_id,
+          input_data: inputData || {},
+          output_data: { error: runResult.error, details: runResult.details },
+          finished_at: new Date(),
+        },
+      });
+
+      return NextResponse.json(
+        { ok: false, error: runResult.error, details: runResult.details },
+        { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
+    }
+
+    const execution = runResult.execution;
+
+    // 4. Log successful execution to Neon database
     await prisma.execution.create({
       data: {
         workflow_id: id,
         user_id: workflow.user_id,
-        input_data: {},
+        input_data: inputData || {},
         output_data: execution.data?.output || null,
         finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
       },
@@ -66,7 +93,7 @@ export async function POST(request: Request) {
     console.error("Workflow execution error:", err.message);
 
     return NextResponse.json(
-      { ok: false, error: err.message },
+      { ok: false, error: err.message || "Internal server error" },
       { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
     );
   }

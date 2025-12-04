@@ -7,12 +7,26 @@
  * MVP: This is the ONLY execution engine used during MVP.
  */
 
+import { validateEnvOrThrow } from './env/validator';
+
+// Validate environment variables at module load time
+// This prevents the module from loading if PIPEDREAM_API_KEY is missing
+if (typeof window === 'undefined') {
+  // Only validate on server-side (Next.js)
+  try {
+    validateEnvOrThrow();
+  } catch (error) {
+    // Log error but don't prevent module from loading in development
+    // In production, this will cause the build to fail
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
+    console.error('⚠️ Environment validation failed:', error);
+  }
+}
+
 const PIPEDREAM_API_URL = process.env.PIPEDREAM_API_URL || 'https://api.pipedream.com/v1';
 const PIPEDREAM_API_KEY = process.env.PIPEDREAM_API_KEY;
-
-if (!PIPEDREAM_API_KEY) {
-  console.warn('Warning: PIPEDREAM_API_KEY is not set in environment variables');
-}
 
 /**
  * Pipedream Workflow structure
@@ -52,7 +66,7 @@ export interface PipedreamExecution {
 }
 
 /**
- * Synth workflow blueprint structure (from Neon database)
+ * Synth workflow blueprint structure (intermediate format for conversion)
  */
 export interface WorkflowBlueprint {
   name: string;
@@ -63,9 +77,24 @@ export interface WorkflowBlueprint {
     config: Record<string, any>;
   };
   actions: Array<{
+    id: string; // Required: id field for step identification
     type: string;
     config: Record<string, any>;
   }>;
+}
+
+/**
+ * Custom error class for Pipedream API errors
+ */
+export class PipedreamAPIError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public responseBody?: any
+  ) {
+    super(message);
+    this.name = 'PipedreamAPIError';
+  }
 }
 
 /**
@@ -76,13 +105,11 @@ async function pipedreamRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   if (!PIPEDREAM_API_KEY) {
-    console.error('❌ [Pipedream Client] PIPEDREAM_API_KEY is not configured');
-    throw new Error('PIPEDREAM_API_KEY is not configured');
+    throw new PipedreamAPIError('PIPEDREAM_API_KEY is not configured');
   }
 
   const url = `${PIPEDREAM_API_URL}${endpoint}`;
   const method = options.method || 'GET';
-  console.log(`🌐 [Pipedream Client] ${method} ${url}`);
 
   const headers = {
     'Authorization': `Bearer ${PIPEDREAM_API_KEY}`,
@@ -90,39 +117,73 @@ async function pipedreamRequest<T>(
     ...options.headers,
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`❌ [Pipedream Client] API error (${response.status}):`, errorText);
-    throw new Error(
-      `Pipedream API error (${response.status}): ${errorText || response.statusText}`
+    if (!response.ok) {
+      let errorBody: any;
+      try {
+        errorBody = await response.json();
+      } catch {
+        errorBody = await response.text();
+      }
+
+      throw new PipedreamAPIError(
+        `Pipedream API error (${response.status}): ${errorBody?.message || errorBody || response.statusText}`,
+        response.status,
+        errorBody
+      );
+    }
+
+    // Handle empty responses (e.g., DELETE requests)
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      return data;
+    } else {
+      // For non-JSON responses or empty bodies, return undefined cast to T
+      return undefined as T;
+    }
+  } catch (err) {
+    if (err instanceof PipedreamAPIError) {
+      throw err;
+    }
+    // Network or other errors
+    throw new PipedreamAPIError(
+      `Failed to communicate with Pipedream API: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      undefined,
+      err
     );
   }
-
-  const data = await response.json();
-  console.log(`✅ [Pipedream Client] ${method} ${url} - Success`);
-  return data;
 }
 
 /**
  * Convert Synth workflow blueprint to Pipedream workflow format
  * 
- * Note: This conversion will be refined once Pipedream API format is confirmed.
+ * Pipedream workflows use a linear step sequence. For MVP, we convert
+ * the graph structure (onSuccessNext/onFailureNext) to a simple linear order.
+ * 
+ * Note: This conversion handles the MVP case where workflows are mostly linear.
+ * Complex branching will be handled in future iterations.
  */
 export function blueprintToPipedreamWorkflow(blueprint: WorkflowBlueprint): PipedreamWorkflow {
+  // Convert actions to Pipedream steps in order
+  // For MVP, we use the order they appear in the actions array
+  // Future: Implement proper graph-to-sequence conversion based on onSuccessNext
+  const steps = blueprint.actions.map((action, index) => ({
+    id: action.id || `step_${index}`,
+    type: action.type,
+    config: action.config || {},
+  }));
+
   return {
     name: blueprint.name,
     description: blueprint.description || blueprint.intent,
     trigger: blueprint.trigger,
-    steps: blueprint.actions.map((action, index) => ({
-      id: action.id || `step_${index}`,
-      type: action.type,
-      config: action.config || {},
-    })),
+    steps,
     active: false,
   };
 }
@@ -133,9 +194,7 @@ export function blueprintToPipedreamWorkflow(blueprint: WorkflowBlueprint): Pipe
 export async function createWorkflow(
   blueprint: WorkflowBlueprint
 ): Promise<PipedreamWorkflow> {
-  console.log(`🔧 [Pipedream Client] Converting blueprint to Pipedream workflow format: "${blueprint.name}"`);
   const pipedreamWorkflow = blueprintToPipedreamWorkflow(blueprint);
-  console.log(`📤 [Pipedream Client] Sending workflow to Pipedream with ${pipedreamWorkflow.steps.length} steps`);
 
   const response = await pipedreamRequest<PipedreamWorkflow>(
     '/workflows',
@@ -145,7 +204,6 @@ export async function createWorkflow(
     }
   );
 
-  console.log(`✅ [Pipedream Client] Workflow created successfully with ID: ${response.id}`);
   return response;
 }
 
@@ -154,6 +212,38 @@ export async function createWorkflow(
  */
 export async function getWorkflow(workflowId: string): Promise<PipedreamWorkflow> {
   return pipedreamRequest<PipedreamWorkflow>(`/workflows/${workflowId}`);
+}
+
+/**
+ * Update an existing workflow in Pipedream
+ */
+export async function updateWorkflow(
+  workflowId: string,
+  blueprint: WorkflowBlueprint
+): Promise<PipedreamWorkflow> {
+  const pipedreamWorkflow = blueprintToPipedreamWorkflow(blueprint);
+
+  return pipedreamRequest<PipedreamWorkflow>(
+    `/workflows/${workflowId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(pipedreamWorkflow),
+    }
+  );
+}
+
+/**
+ * Delete a workflow from Pipedream
+ * 
+ * Optional for MVP, but useful for cleanup
+ */
+export async function deleteWorkflow(workflowId: string): Promise<void> {
+  await pipedreamRequest<void>(
+    `/workflows/${workflowId}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
 /**
