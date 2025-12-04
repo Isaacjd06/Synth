@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
-import { buildN8nWorkflowFromPlan } from "@/lib/workflow/builder";
-import { deployWorkflow } from "@/lib/n8n/deployWorkflow";
+import { validateAppConnections } from "@/lib/workflow/connectionValidator";
+import { deployWorkflow } from "@/lib/pipedream/deployWorkflow";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -70,29 +70,40 @@ export async function POST(req: Request) {
 
     const plan = validation.plan;
 
-    // 3. Build n8n workflow JSON
-    const n8nWorkflow = buildN8nWorkflowFromPlan(plan);
+    // Validate app connections before activating workflow
+    const connectionValidation = await validateAppConnections(plan, SYSTEM_USER_ID);
+    if (!connectionValidation.ok) {
+      return NextResponse.json(
+        {
+          error: "Cannot activate workflow: " + connectionValidation.error,
+          missingApps: connectionValidation.missingApps,
+        },
+        { status: 400 }
+      );
+    }
 
-    // 4. Deploy to n8n
-    const deploy = await deployWorkflow(n8nWorkflow);
+    // 3. Deploy to Pipedream (using WorkflowPlan directly, no n8n conversion)
+    const deploy = await deployWorkflow(plan);
 
     if (!deploy.ok) {
       return NextResponse.json(
         {
-          error: "Failed to deploy workflow to n8n.",
+          error: "Failed to deploy workflow to Pipedream.",
           details: deploy.details || deploy.error,
         },
         { status: 500 }
       );
     }
 
-    const n8nId = deploy.workflowId;
+    const pipedreamWorkflowId = deploy.workflowId;
 
-    // 5. Save n8n workflow ID in Neon
+    // 4. Save Pipedream workflow ID in Neon
+    // NOTE: We're using n8n_workflow_id field temporarily for MVP
+    // This field will be renamed in a future migration to a generic "executor_workflow_id"
     await prisma.workflows.update({
       where: { id },
       data: {
-        n8n_workflow_id: n8nId.toString(),
+        n8n_workflow_id: pipedreamWorkflowId, // TEMPORARY: Using this field for MVP
         active: true,
       },
     });
@@ -101,7 +112,7 @@ export async function POST(req: Request) {
       {
         success: true,
         message: "Workflow activated successfully.",
-        n8n_workflow_id: n8nId,
+        workflow_id: pipedreamWorkflowId,
       },
       { status: 200 }
     );

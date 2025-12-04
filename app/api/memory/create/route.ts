@@ -8,11 +8,11 @@ const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { key, value } = body;
+    const { context_type, content, relevance_score, metadata } = body;
 
-    if (!key || !value) {
+    if (!context_type || content === undefined) {
       return NextResponse.json(
-        { error: "Both 'key' and 'value' are required." },
+        { error: "Both 'context_type' and 'content' are required." },
         { status: 400 }
       );
     }
@@ -20,8 +20,11 @@ export async function POST(req: Request) {
     const memory = await prisma.memory.create({
       data: {
         user_id: SYSTEM_USER_ID,
-        key,
-        value,
+        context_type,
+        content,
+        relevance_score: relevance_score || null,
+        metadata: metadata || null,
+        last_accessed: new Date(),
       },
     });
 

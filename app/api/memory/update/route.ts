@@ -8,7 +8,7 @@ const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { id, key, value } = body;
+    const { id, context_type, content, relevance_score, metadata } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -34,8 +34,11 @@ export async function POST(req: Request) {
 
     // Build update object dynamically
     const updateData: any = {};
-    if (key !== undefined) updateData.key = key;
-    if (value !== undefined) updateData.value = value;
+    if (context_type !== undefined) updateData.context_type = context_type;
+    if (content !== undefined) updateData.content = content;
+    if (relevance_score !== undefined) updateData.relevance_score = relevance_score;
+    if (metadata !== undefined) updateData.metadata = metadata;
+    updateData.last_accessed = new Date(); // Always update last_accessed
 
     const updated = await prisma.memory.update({
       where: { id },

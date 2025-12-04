@@ -320,7 +320,17 @@ function buildConnections(
 }
 
 /**
- * Main builder: takes a validated WorkflowPlan and builds an n8n workflow JSON.
+ * FUTURE: Build n8n workflow JSON from WorkflowPlan
+ * 
+ * ⚠️ NOT USED IN MVP ⚠️
+ * 
+ * This function is kept for future n8n support. During MVP, Synth uses ONLY Pipedream
+ * as the execution engine. WorkflowPlan is already engine-agnostic and can be sent
+ * directly to Pipedream without n8n-specific conversion.
+ * 
+ * For MVP, use: lib/pipedream/deployWorkflow.ts which accepts WorkflowPlan directly
+ * 
+ * See: knowledge/architecture/n8n-logic.md
  */
 export function buildN8nWorkflowFromPlan(plan: WorkflowPlan): N8nWorkflow {
   const nodes: N8nNode[] = [];

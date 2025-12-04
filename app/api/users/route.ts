@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Type definitions
 interface CreateUserBody {
@@ -22,7 +22,7 @@ export async function GET() {
   } catch (error) {
     console.error("GET /api/users error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch users" },
+      { error: "Failed to fetch users" },
       { status: 500 }
     );
   }
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     if (!body.email || !body.name) {
       return NextResponse.json(
-        { success: false, error: "email and name are required" },
+        { error: "email and name are required" },
         { status: 400 }
       );
     }
@@ -55,13 +55,13 @@ export async function POST(request: NextRequest) {
     // Handle unique constraint violation
     if (error.code === "P2002") {
       return NextResponse.json(
-        { success: false, error: "Email already exists" },
+        { error: "Email already exists" },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: "Failed to create user" },
+      { error: "Failed to create user" },
       { status: 500 }
     );
   }
@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest) {
 
     if (!body.id) {
       return NextResponse.json(
-        { success: false, error: "User ID is required" },
+        { error: "User ID is required" },
         { status: 400 }
       );
     }
@@ -86,7 +86,7 @@ export async function PUT(request: NextRequest) {
 
     if (!existingUser) {
       return NextResponse.json(
-        { success: false, error: "User not found" },
+        { error: "User not found" },
         { status: 404 }
       );
     }
@@ -105,13 +105,13 @@ export async function PUT(request: NextRequest) {
 
     if (error.code === "P2002") {
       return NextResponse.json(
-        { success: false, error: "Email already exists" },
+        { error: "Email already exists" },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: "Failed to update user" },
+      { error: "Failed to update user" },
       { status: 500 }
     );
   }
@@ -125,7 +125,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "User ID is required" },
+        { error: "User ID is required" },
         { status: 400 }
       );
     }
@@ -137,7 +137,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!existingUser) {
       return NextResponse.json(
-        { success: false, error: "User not found" },
+        { error: "User not found" },
         { status: 404 }
       );
     }
@@ -150,7 +150,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("DELETE /api/users error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to delete user" },
+      { error: "Failed to delete user" },
       { status: 500 }
     );
   }

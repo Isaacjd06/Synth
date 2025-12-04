@@ -1,7 +1,9 @@
 "use server";
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";  // ✅ Corrected import path
+import { prisma } from "@/lib/prisma";
+import { validateAppConnections } from "@/lib/workflow/connectionValidator";
+import { validateWorkflowPlan } from "@/lib/workflow/validator";
 
 // TEMP system user (until full auth is wired in)
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
@@ -19,6 +21,42 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate workflow structure first
+    const rawPlan = {
+      name,
+      description: description || "",
+      intent: intent || "",
+      trigger: trigger || {},
+      actions: actions || [],
+      metadata: {},
+    };
+
+    const workflowValidation = validateWorkflowPlan(rawPlan);
+    if (!workflowValidation.ok) {
+      return NextResponse.json(
+        {
+          error: "Workflow validation failed.",
+          details: workflowValidation.details || workflowValidation.error,
+        },
+        { status: 400 }
+      );
+    }
+
+    const plan = workflowValidation.plan;
+
+    // Validate app connections before creating workflow
+    const connectionValidation = await validateAppConnections(plan, SYSTEM_USER_ID);
+    if (!connectionValidation.ok) {
+      return NextResponse.json(
+        {
+          error: connectionValidation.error,
+          missingApps: connectionValidation.missingApps,
+        },
+        { status: 400 }
+      );
+    }
+
+    // All validations passed, create workflow
     const workflow = await prisma.workflows.create({
       data: {
         user_id: SYSTEM_USER_ID,

@@ -1,5 +1,18 @@
 // lib/n8n/deployWorkflow.ts
 
+/**
+ * FUTURE: Deploy workflow to n8n
+ * 
+ * ⚠️ NOT USED IN MVP ⚠️
+ * 
+ * This file is kept for future n8n support. During MVP, Synth uses ONLY Pipedream
+ * as the execution engine. Do not import or use this module during MVP development.
+ * 
+ * For MVP, use: lib/pipedream/deployWorkflow.ts
+ * 
+ * See: knowledge/architecture/n8n-logic.md
+ */
+
 import { N8nWorkflow } from "../workflow/builder";
 
 export type DeployResult =

@@ -1,28 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
+
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // Type definitions
 interface CreateConnectionBody {
   user_id: string;
   service_name: string;
-  credentials?: any;
+  status?: string; // "active" | "inactive"
+  connection_type?: string; // "OAuth" | "APIKey"
+  // SECURITY: Secrets are NOT stored in database
 }
 
 interface UpdateConnectionBody {
   id: string;
   service_name?: string;
-  credentials?: any;
+  status?: string;
+  connection_type?: string;
+  // SECURITY: Secrets are NOT stored in database
 }
 
 // GET - Fetch all connections
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
-
-    // Filter by user_id if provided
+    // Always enforce SYSTEM_USER_ID scope - ignore user_id query param
     const connections = await prisma.connection.findMany({
-      where: userId ? { user_id: userId } : undefined,
+      where: {
+        user_id: SYSTEM_USER_ID, // Security scope check - only return connections for system user
+      },
       orderBy: { created_at: "desc" },
       include: {
         user: {
@@ -39,7 +44,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("GET /api/connections error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch connections" },
+      { error: "Failed to fetch connections" },
       { status: 500 }
     );
   }
@@ -51,30 +56,26 @@ export async function POST(request: NextRequest) {
     const body: CreateConnectionBody = await request.json();
 
     // Validate required fields
-    if (!body.user_id || !body.service_name) {
+    if (!body.service_name) {
       return NextResponse.json(
-        { success: false, error: "user_id and service_name are required" },
+        { error: "service_name is required" },
         { status: 400 }
       );
     }
 
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: body.user_id },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "User not found" },
-        { status: 404 }
-      );
-    }
+    // Enforce SYSTEM_USER_ID - ignore user_id from request body
+    // This prevents users from creating connections for other users
+    // SECURITY: Do not store credentials in database
+    // Credentials (OAuth tokens, API keys) must be stored in secure storage system
+    // This endpoint only stores connection metadata
 
     const connection = await prisma.connection.create({
       data: {
-        user_id: body.user_id,
+        user_id: SYSTEM_USER_ID, // Always use SYSTEM_USER_ID, ignore body.user_id
         service_name: body.service_name,
-        credentials: body.credentials,
+        status: body.status || "active",
+        connection_type: body.connection_type || null,
+        last_verified: new Date(),
       },
     });
 
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/connections error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to create connection" },
+      { error: "Failed to create connection" },
       { status: 500 }
     );
   }
@@ -95,28 +96,37 @@ export async function PUT(request: NextRequest) {
 
     if (!body.id) {
       return NextResponse.json(
-        { success: false, error: "Connection ID is required" },
+        { error: "Connection ID is required" },
         { status: 400 }
       );
     }
 
-    // Check if connection exists
-    const existingConnection = await prisma.connection.findUnique({
-      where: { id: body.id },
+    // Check if connection exists and belongs to system user
+    const existingConnection = await prisma.connection.findFirst({
+      where: {
+        id: body.id,
+        user_id: SYSTEM_USER_ID, // Security scope check
+      },
     });
 
     if (!existingConnection) {
       return NextResponse.json(
-        { success: false, error: "Connection not found" },
+        { error: "Connection not found" },
         { status: 404 }
       );
     }
+
+    // SECURITY: Do not update credentials in database
+    // Credentials must be updated in secure storage system separately
 
     const connection = await prisma.connection.update({
       where: { id: body.id },
       data: {
         service_name: body.service_name,
-        credentials: body.credentials,
+        status: body.status,
+        connection_type: body.connection_type,
+        // Update last_verified when status changes
+        ...(body.status && { last_verified: new Date() }),
       },
     });
 
@@ -124,7 +134,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("PUT /api/connections error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to update connection" },
+      { error: "Failed to update connection" },
       { status: 500 }
     );
   }
@@ -138,22 +148,28 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Connection ID is required" },
+        { error: "Connection ID is required" },
         { status: 400 }
       );
     }
 
-    // Check if connection exists
-    const existingConnection = await prisma.connection.findUnique({
-      where: { id },
+    // Check if connection exists and belongs to system user
+    const existingConnection = await prisma.connection.findFirst({
+      where: {
+        id,
+        user_id: SYSTEM_USER_ID, // Security scope check
+      },
     });
 
     if (!existingConnection) {
       return NextResponse.json(
-        { success: false, error: "Connection not found" },
+        { error: "Connection not found" },
         { status: 404 }
       );
     }
+
+    // SECURITY: When deleting connection, also delete secrets from secure storage
+    // This is handled by the secure storage system, not this endpoint
 
     await prisma.connection.delete({
       where: { id },
@@ -163,7 +179,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("DELETE /api/connections error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to delete connection" },
+      { error: "Failed to delete connection" },
       { status: 500 }
     );
   }

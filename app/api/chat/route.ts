@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Type definitions
 interface CreateChatMessageBody {
   user_id: string;
-  session_id?: string;
+  conversation_id?: string;
   role: string;
-  message: string;
+  content: string;
+  metadata?: any;
 }
 
 interface UpdateChatMessageBody {
   id: string;
-  session_id?: string;
+  conversation_id?: string;
   role?: string;
-  message?: string;
+  content?: string;
+  metadata?: any;
 }
 
 // GET - Fetch all chat messages
@@ -21,12 +23,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("user_id");
-    const sessionId = searchParams.get("session_id");
+    const conversationId = searchParams.get("conversation_id");
 
     // Build where clause for filtering
     const where: any = {};
     if (userId) where.user_id = userId;
-    if (sessionId) where.session_id = sessionId;
+    if (conversationId) where.conversation_id = conversationId;
 
     const chatMessages = await prisma.chatMessage.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
@@ -58,9 +60,9 @@ export async function POST(request: NextRequest) {
     const body: CreateChatMessageBody = await request.json();
 
     // Validate required fields
-    if (!body.user_id || !body.role || !body.message) {
+    if (!body.user_id || !body.role || !body.content) {
       return NextResponse.json(
-        { success: false, error: "user_id, role, and message are required" },
+        { success: false, error: "user_id, role, and content are required" },
         { status: 400 }
       );
     }
@@ -80,9 +82,10 @@ export async function POST(request: NextRequest) {
     const chatMessage = await prisma.chatMessage.create({
       data: {
         user_id: body.user_id,
-        session_id: body.session_id,
+        conversation_id: body.conversation_id || null,
         role: body.role,
-        message: body.message,
+        content: body.content,
+        metadata: body.metadata || null,
       },
     });
 
@@ -123,9 +126,10 @@ export async function PUT(request: NextRequest) {
     const chatMessage = await prisma.chatMessage.update({
       where: { id: body.id },
       data: {
-        session_id: body.session_id,
+        conversation_id: body.conversation_id,
         role: body.role,
-        message: body.message,
+        content: body.content,
+        metadata: body.metadata,
       },
     });
 

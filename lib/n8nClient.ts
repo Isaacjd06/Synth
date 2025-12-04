@@ -1,5 +1,13 @@
 /**
- * n8n REST API Client
+ * FUTURE: n8n REST API Client
+ * 
+ * ⚠️ NOT USED IN MVP ⚠️
+ * 
+ * This file is kept for future n8n support. During MVP, Synth uses ONLY Pipedream
+ * as the execution engine. Do not import or use this module during MVP development.
+ * 
+ * See: knowledge/architecture/n8n-logic.md
+ * See: knowledge/architecture/pipedream-logic.md
  *
  * Provides utilities for interacting with n8n's REST API
  * Documentation: https://docs.n8n.io/api/

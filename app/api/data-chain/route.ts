@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma"; // ensure this path matches your actual prisma.ts location
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {

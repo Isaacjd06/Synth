@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Type definitions
 interface CreateMemoryBody {
   user_id: string;
-  key: string;
-  value?: any;
+  context_type: string;
+  content: any; // can be text or JSON
+  relevance_score?: number;
+  metadata?: any;
 }
 
 interface UpdateMemoryBody {
   id: string;
-  key?: string;
-  value?: any;
+  context_type?: string;
+  content?: any;
+  relevance_score?: number;
+  metadata?: any;
 }
 
 // GET - Fetch all memory entries
@@ -19,12 +23,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("user_id");
-    const key = searchParams.get("key");
+    const contextType = searchParams.get("context_type");
 
     // Build where clause for filtering
     const where: any = {};
     if (userId) where.user_id = userId;
-    if (key) where.key = key;
+    if (contextType) where.context_type = contextType;
 
     const memory = await prisma.memory.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
@@ -56,9 +60,9 @@ export async function POST(request: NextRequest) {
     const body: CreateMemoryBody = await request.json();
 
     // Validate required fields
-    if (!body.user_id || !body.key) {
+    if (!body.user_id || !body.context_type || body.content === undefined) {
       return NextResponse.json(
-        { success: false, error: "user_id and key are required" },
+        { success: false, error: "user_id, context_type, and content are required" },
         { status: 400 }
       );
     }
@@ -78,8 +82,11 @@ export async function POST(request: NextRequest) {
     const memory = await prisma.memory.create({
       data: {
         user_id: body.user_id,
-        key: body.key,
-        value: body.value,
+        context_type: body.context_type,
+        content: body.content,
+        relevance_score: body.relevance_score || null,
+        metadata: body.metadata || null,
+        last_accessed: new Date(),
       },
     });
 
@@ -120,8 +127,11 @@ export async function PUT(request: NextRequest) {
     const memory = await prisma.memory.update({
       where: { id: body.id },
       data: {
-        key: body.key,
-        value: body.value,
+        context_type: body.context_type,
+        content: body.content,
+        relevance_score: body.relevance_score,
+        metadata: body.metadata,
+        last_accessed: new Date(), // Update last_accessed on any update
       },
     });
 

@@ -16,6 +16,7 @@ model User {
   connections         Connection[]
   executions          Execution[]
   workflows           Workflows[]
+  memory              Memory[]             // NEW
   memoryCategories    MemoryCategory[]
   memoryItems         MemoryItem[]
   knowledge           Knowledge[]
@@ -36,7 +37,10 @@ model Workflows {
   trigger           Json?
   actions           Json?
   active            Boolean            @default(true)
-  n8n_workflow_id   String?
+  n8n_workflow_id   String?            // TEMPORARY MVP: Stores Pipedream workflow ID during MVP phase. 
+                                       // This field will be renamed to "executor_workflow_id" in a future migration.
+                                       // For MVP, Synth uses ONLY Pipedream as execution engine.
+                                       // See: knowledge/architecture/pipedream-logic.md
   created_at        DateTime           @default(now())
   executions        Execution[]
   memoryAutomations MemoryAutomation[]
@@ -58,21 +62,44 @@ model Execution {
 }
 
 model Connection {
-  id           String   @id @default(uuid())
-  user_id      String
-  service_name String
-  credentials  Json?
-  created_at   DateTime @default(now())
-  user         User     @relation(fields: [user_id], references: [id])
+  id             String   @id @default(uuid())
+  user_id        String
+  service_name   String   // e.g., "Gmail", "Slack"
+  status         String   @default("active") // "active" | "inactive"
+  connection_type String?  // "OAuth" | "APIKey" | null
+  created_at     DateTime @default(now())
+  last_verified  DateTime?
+  // REMOVED: credentials  Json?  // SECURITY: Secrets are NOT stored here. They are stored in secure storage system.
+  user           User     @relation(fields: [user_id], references: [id])
+
+  @@map("connections")
 }
 
 model ChatMessage {
-  id         String   @id @default(uuid())
-  user_id    String
-  role       String
-  message    String
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id])
+  id              String   @id @default(uuid())
+  user_id         String
+  role            String   // "user" | "assistant" | "system"
+  content         String   // Changed from "message" - the actual message text
+  conversation_id String?  // NEW: Groups related messages together
+  created_at      DateTime @default(now()) // Keep created_at (maps to "timestamp" in docs)
+  metadata        Json?    // NEW: Additional information about the message
+  user            User     @relation(fields: [user_id], references: [id])
+
+  @@map("chat_messages")
+}
+
+model Memory {
+  id                String   @id @default(uuid())
+  user_id           String
+  context_type      String   // e.g., "preference", "reasoning", "pattern", "workflow_decision", "user_behavior"
+  content           Json     // Text or JSON - the actual memory data
+  relevance_score   Float?   // Indicates how relevant this memory is
+  created_at        DateTime @default(now())
+  last_accessed     DateTime?
+  metadata          Json?    // Additional information about the memory
+  user              User     @relation(fields: [user_id], references: [id])
+
+  @@map("memory")
 }
 
 model MemoryCategory {
