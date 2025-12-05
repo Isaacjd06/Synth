@@ -7,26 +7,35 @@
  * MVP: This is the ONLY execution engine used during MVP.
  */
 
-import { validateEnvOrThrow } from './env/validator';
+// Environment variables are accessed at runtime, not at module load time
+// This allows the module to be imported during build without requiring env vars
+const PIPEDREAM_API_URL = process.env.PIPEDREAM_API_URL || 'https://api.pipedream.com/v1';
 
-// Validate environment variables at module load time
-// This prevents the module from loading if PIPEDREAM_API_KEY is missing
-if (typeof window === 'undefined') {
-  // Only validate on server-side (Next.js)
-  try {
-    validateEnvOrThrow();
-  } catch (error) {
-    // Log error but don't prevent module from loading in development
-    // In production, this will cause the build to fail
-    if (process.env.NODE_ENV === 'production') {
-      throw error;
-    }
-    console.error('⚠️ Environment validation failed:', error);
+/**
+ * Custom error class for Pipedream API errors
+ */
+export class PipedreamAPIError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public responseBody?: any
+  ) {
+    super(message);
+    this.name = 'PipedreamAPIError';
   }
 }
 
-const PIPEDREAM_API_URL = process.env.PIPEDREAM_API_URL || 'https://api.pipedream.com/v1';
-const PIPEDREAM_API_KEY = process.env.PIPEDREAM_API_KEY;
+/**
+ * Get Pipedream API key at runtime
+ * Throws error if not configured when actually making API calls
+ */
+function getPipedreamApiKey(): string {
+  const apiKey = process.env.PIPEDREAM_API_KEY;
+  if (!apiKey) {
+    throw new PipedreamAPIError('PIPEDREAM_API_KEY is not configured. Please set it in your environment variables.');
+  }
+  return apiKey;
+}
 
 /**
  * Pipedream Workflow structure
@@ -84,35 +93,20 @@ export interface WorkflowBlueprint {
 }
 
 /**
- * Custom error class for Pipedream API errors
- */
-export class PipedreamAPIError extends Error {
-  constructor(
-    message: string,
-    public statusCode?: number,
-    public responseBody?: any
-  ) {
-    super(message);
-    this.name = 'PipedreamAPIError';
-  }
-}
-
-/**
  * Make authenticated request to Pipedream API
  */
 async function pipedreamRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  if (!PIPEDREAM_API_KEY) {
-    throw new PipedreamAPIError('PIPEDREAM_API_KEY is not configured');
-  }
+  // Get API key at runtime (not at module load time)
+  const apiKey = getPipedreamApiKey();
 
   const url = `${PIPEDREAM_API_URL}${endpoint}`;
   const method = options.method || 'GET';
 
   const headers = {
-    'Authorization': `Bearer ${PIPEDREAM_API_KEY}`,
+    'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
     ...options.headers,
   };
