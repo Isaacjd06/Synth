@@ -11,12 +11,21 @@ model User {
   id                  String               @id @default(uuid())
   email               String               @unique
   name                String
+
+  // 🔥 For Google Login
+  google_id           String?              @unique
+  avatar_url          String?
+  email_verified      Boolean?             @default(false)
+  provider            String?              @default("google")
+  last_login_at       DateTime?            @default(now())
+
   created_at          DateTime             @default(now())
+
   chatMessages        ChatMessage[]
   connections         Connection[]
   executions          Execution[]
   workflows           Workflows[]
-  memory              Memory[]             // NEW
+  memory              Memory[]
   memoryCategories    MemoryCategory[]
   memoryItems         MemoryItem[]
   knowledge           Knowledge[]
@@ -37,11 +46,12 @@ model Workflows {
   trigger           Json?
   actions           Json?
   active            Boolean            @default(true)
-  n8n_workflow_id   String?            // TEMPORARY MVP: Stores Pipedream workflow ID during MVP phase. 
-                                       // This field will be renamed to "executor_workflow_id" in a future migration.
-                                       // For MVP, Synth uses ONLY Pipedream as execution engine.
-                                       // See: knowledge/architecture/pipedream-logic.md
+  n8n_workflow_id   String? // TEMPORARY MVP: Stores Pipedream workflow ID during MVP phase.
+  // This field will be renamed to "executor_workflow_id" in a future migration.
+  // For MVP, Synth uses ONLY Pipedream as execution engine.
+  // See: knowledge/architecture/pipedream-logic.md
   created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
   executions        Execution[]
   memoryAutomations MemoryAutomation[]
   user              User               @relation(fields: [user_id], references: [id])
@@ -50,27 +60,29 @@ model Workflows {
 }
 
 model Execution {
-  id          String    @id @default(uuid())
-  workflow_id String
-  user_id     String
-  input_data  Json?
-  output_data Json?
-  created_at  DateTime  @default(now())
-  finished_at DateTime?
-  user        User      @relation(fields: [user_id], references: [id])
-  workflow    Workflows @relation(fields: [workflow_id], references: [id])
+  id                     String    @id @default(uuid())
+  workflow_id            String
+  user_id                String
+  input_data             Json?
+  output_data            Json?
+  status                 String?   @default("unknown") // "success" | "failure" | "running" | "unknown"
+  pipedream_execution_id String? // External execution ID from Pipedream
+  created_at             DateTime  @default(now())
+  finished_at            DateTime?
+  user                   User      @relation(fields: [user_id], references: [id])
+  workflow               Workflows @relation(fields: [workflow_id], references: [id])
 }
 
 model Connection {
-  id             String   @id @default(uuid())
-  user_id        String
-  service_name   String   // e.g., "Gmail", "Slack"
-  status         String   @default("active") // "active" | "inactive"
-  connection_type String?  // "OAuth" | "APIKey" | null
-  created_at     DateTime @default(now())
-  last_verified  DateTime?
+  id              String    @id @default(uuid())
+  user_id         String
+  service_name    String // e.g., "Gmail", "Slack"
+  status          String    @default("active") // "active" | "inactive"
+  connection_type String? // "OAuth" | "APIKey" | null
+  created_at      DateTime  @default(now())
+  last_verified   DateTime?
   // REMOVED: credentials  Json?  // SECURITY: Secrets are NOT stored here. They are stored in secure storage system.
-  user           User     @relation(fields: [user_id], references: [id])
+  user            User      @relation(fields: [user_id], references: [id])
 
   @@map("connections")
 }
@@ -78,26 +90,26 @@ model Connection {
 model ChatMessage {
   id              String   @id @default(uuid())
   user_id         String
-  role            String   // "user" | "assistant" | "system"
-  content         String   // Changed from "message" - the actual message text
-  conversation_id String?  // NEW: Groups related messages together
+  role            String // "user" | "assistant" | "system"
+  content         String // Changed from "message" - the actual message text
+  conversation_id String? // NEW: Groups related messages together
   created_at      DateTime @default(now()) // Keep created_at (maps to "timestamp" in docs)
-  metadata        Json?    // NEW: Additional information about the message
+  metadata        Json? // NEW: Additional information about the message
   user            User     @relation(fields: [user_id], references: [id])
 
   @@map("chat_messages")
 }
 
 model Memory {
-  id                String   @id @default(uuid())
-  user_id           String
-  context_type      String   // e.g., "preference", "reasoning", "pattern", "workflow_decision", "user_behavior"
-  content           Json     // Text or JSON - the actual memory data
-  relevance_score   Float?   // Indicates how relevant this memory is
-  created_at        DateTime @default(now())
-  last_accessed     DateTime?
-  metadata          Json?    // Additional information about the memory
-  user              User     @relation(fields: [user_id], references: [id])
+  id              String    @id @default(uuid())
+  user_id         String
+  context_type    String // e.g., "preference", "reasoning", "pattern", "workflow_decision", "user_behavior"
+  content         Json // Text or JSON - the actual memory data
+  relevance_score Float? // Indicates how relevant this memory is
+  created_at      DateTime  @default(now())
+  last_accessed   DateTime?
+  metadata        Json? // Additional information about the memory
+  user            User      @relation(fields: [user_id], references: [id])
 
   @@map("memory")
 }
@@ -198,15 +210,15 @@ model MemoryRoadmap {
 }
 
 model CoreFramework {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  title       String
-  category    String              // e.g. "icp", "offer", "funnel_acquisition"
-  tags        String[]            // e.g. ["b2b", "agency", "early_stage"]
-  content     Json                // full structured framework JSON
-  sourceType  String              // "book" | "article" | "operator" | "internal"
-  sourceRef   String?             // URL, book ref, or note
-  confidence  Float   @default(0.9)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  title      String
+  category   String // e.g. "icp", "offer", "funnel_acquisition"
+  tags       String[] // e.g. ["b2b", "agency", "early_stage"]
+  content    Json // full structured framework JSON
+  sourceType String // "book" | "article" | "operator" | "internal"
+  sourceRef  String? // URL, book ref, or note
+  confidence Float    @default(0.9)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

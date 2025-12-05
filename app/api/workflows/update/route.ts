@@ -87,10 +87,10 @@ export async function POST(req: Request) {
     }
 
     // 3. All validations passed, update workflow
+    // Note: user_id check was already done in findFirst above
     const workflow = await prisma.workflows.update({
       where: {
-        id,
-        user_id: SYSTEM_USER_ID, // Security scope
+        id, // id is the primary key, sufficient for update
       },
       data: updateData,
     });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { formatDateTime, formatStatus } from "@/lib/utils";
 
 interface Execution {
   id: string;
@@ -11,6 +12,8 @@ interface Execution {
   user_id: string;
   input_data: any;
   output_data: any;
+  status?: string | null;
+  pipedream_execution_id?: string | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -33,14 +36,18 @@ export default function ExecutionHistory({ executions }: ExecutionHistoryProps) 
   };
 
   const getStatus = (execution: Execution): "success" | "error" => {
+    // Use status field if available, otherwise derive from output_data
+    if (execution.status) {
+      if (execution.status === "failure" || execution.status === "error") {
+        return "error";
+      }
+      return "success";
+    }
+    // Fallback: derive from output_data
     if (execution.output_data?.error) {
       return "error";
     }
     return "success";
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
   };
 
   if (executions.length === 0) {
@@ -62,23 +69,23 @@ export default function ExecutionHistory({ executions }: ExecutionHistoryProps) 
           <Card key={execution.id}>
             <div className="space-y-4">
               {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Badge variant={status}>
-                    {status === "success" ? "Success" : "Error"}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <Badge variant={status} className="flex-shrink-0">
+                    {formatStatus(status)}
                   </Badge>
-                  <span className="text-sm text-gray-400">
-                    {formatDate(execution.created_at)}
+                  <span className="text-xs sm:text-sm text-gray-400">
+                    {formatDateTime(execution.created_at)}
                   </span>
                   {execution.finished_at && (
                     <span className="text-xs text-gray-500">
-                      Finished: {formatDate(execution.finished_at)}
+                      Finished: {formatDateTime(execution.finished_at)}
                     </span>
                   )}
                 </div>
                 <button
                   onClick={() => toggleExpand(execution.id)}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  className="text-gray-400 hover:text-white transition-colors self-end sm:self-auto flex-shrink-0"
                   aria-label={isExpanded ? "Collapse execution details" : "Expand execution details"}
                 >
                   {isExpanded ? (
@@ -98,7 +105,7 @@ export default function ExecutionHistory({ executions }: ExecutionHistoryProps) 
                       <h3 className="text-sm font-medium text-gray-300 mb-2">
                         Input Data
                       </h3>
-                      <pre className="bg-black/40 p-4 rounded text-sm overflow-x-auto text-gray-300">
+                      <pre className="bg-black/40 p-3 sm:p-4 rounded text-xs sm:text-sm overflow-x-auto text-gray-300">
                         {JSON.stringify(execution.input_data, null, 2)}
                       </pre>
                     </div>
@@ -110,7 +117,7 @@ export default function ExecutionHistory({ executions }: ExecutionHistoryProps) 
                       <h3 className="text-sm font-medium text-gray-300 mb-2">
                         Output Data
                       </h3>
-                      <pre className="bg-black/40 p-4 rounded text-sm overflow-x-auto text-gray-300">
+                      <pre className="bg-black/40 p-3 sm:p-4 rounded text-xs sm:text-sm overflow-x-auto text-gray-300">
                         {JSON.stringify(execution.output_data, null, 2)}
                       </pre>
                     </div>

@@ -30,25 +30,40 @@ export async function GET(request: NextRequest) {
     if (userId) where.user_id = userId;
     if (conversationId) where.conversation_id = conversationId;
 
+    // Always filter by user_id if provided, otherwise return empty array for safety
+    if (!userId) {
+      console.warn("GET /api/chat: No user_id provided, returning empty array");
+      return NextResponse.json({ success: true, data: [] });
+    }
+
     const chatMessages = await prisma.chatMessage.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
+      where: where,
       orderBy: { created_at: "asc" },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
+      select: {
+        id: true,
+        user_id: true,
+        role: true,
+        content: true,
+        conversation_id: true,
+        created_at: true,
+        metadata: true,
       },
     });
 
     return NextResponse.json({ success: true, data: chatMessages });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GET /api/chat error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return NextResponse.json(
-      { success: false, error: "Failed to fetch chat messages" },
+      { 
+        success: false, 
+        error: error?.message || "Failed to fetch chat messages",
+        details: process.env.NODE_ENV === "development" ? error?.stack : undefined
+      },
       { status: 500 }
     );
   }
@@ -74,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: "User not found" },
+        { success: false, error: "User not found. Please ensure the user exists in the database." },
         { status: 404 }
       );
     }
@@ -90,10 +105,19 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, data: chatMessage }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("POST /api/chat error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return NextResponse.json(
-      { success: false, error: "Failed to create chat message" },
+      { 
+        success: false, 
+        error: error?.message || "Failed to create chat message",
+        details: process.env.NODE_ENV === "development" ? error?.stack : undefined
+      },
       { status: 500 }
     );
   }

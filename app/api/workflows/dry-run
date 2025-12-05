@@ -1,3 +1,12 @@
+/**
+ * POST /api/workflows/dry-run
+ * 
+ * DEPRECATED: This route uses n8n builder for preview purposes.
+ * MVP uses Pipedream only. This route is kept for backward compatibility.
+ * 
+ * Validates a workflow plan and returns a preview JSON (n8n format).
+ * Does NOT deploy the workflow.
+ */
 "use server";
 
 import { NextResponse } from "next/server";

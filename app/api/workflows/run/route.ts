@@ -62,6 +62,7 @@ export async function POST(request: Request) {
           user_id: workflow.user_id,
           input_data: inputData || {},
           output_data: { error: runResult.error, details: runResult.details },
+          status: "failure",
           finished_at: new Date(),
         },
       });
@@ -81,6 +82,8 @@ export async function POST(request: Request) {
         user_id: workflow.user_id,
         input_data: inputData || {},
         output_data: execution.data?.output || null,
+        status: "success",
+        pipedream_execution_id: execution.id?.toString() || null,
         finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
       },
     });

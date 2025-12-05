@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Button from "@/components/ui/Button";
 
 interface RunWorkflowButtonProps {
@@ -10,14 +11,10 @@ interface RunWorkflowButtonProps {
 
 export default function RunWorkflowButton({ workflowId }: RunWorkflowButtonProps) {
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleRun = async () => {
     setLoading(true);
-    setSuccess(false);
-    setError(null);
 
     try {
       const res = await fetch("/api/workflows/run", {
@@ -34,35 +31,39 @@ export default function RunWorkflowButton({ workflowId }: RunWorkflowButtonProps
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to run workflow");
+        const errorMessage = data.error || data.details || "Failed to run workflow";
+        toast.error("Workflow Execution Failed", {
+          description: errorMessage,
+        });
+        return;
       }
 
-      setSuccess(true);
+      toast.success("Workflow Executed Successfully", {
+        description: "The workflow has been executed and results are being logged.",
+      });
+
+      // Refresh to show new execution
       setTimeout(() => {
-        setSuccess(false);
         router.refresh();
-      }, 2000);
+      }, 500);
     } catch (err: any) {
-      setError(err.message || "An error occurred");
+      toast.error("Network Error", {
+        description: err.message || "Failed to connect to the server. Please try again.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-2">
-      <Button
-        variant="primary"
-        onClick={handleRun}
-        loading={loading}
-        disabled={loading || success}
-      >
-        {success ? "✓ Executed Successfully" : "Run Workflow"}
-      </Button>
-      {error && (
-        <p className="text-sm text-red-400">{error}</p>
-      )}
-    </div>
+    <Button
+      variant="primary"
+      onClick={handleRun}
+      loading={loading}
+      disabled={loading}
+    >
+      Run Workflow
+    </Button>
   );
 }
 

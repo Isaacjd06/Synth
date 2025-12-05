@@ -3,6 +3,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -19,11 +21,13 @@ export async function POST(req: Request) {
     }
 
     // Save execution log
-    const saved = await prisma.executions.create({
+    const saved = await prisma.execution.create({
       data: {
         workflow_id: workflowId,
+        user_id: SYSTEM_USER_ID, // Add user_id for schema compliance
         input_data: inputData,
         output_data: outputData,
+        status: outputData?.error ? "failure" : "success",
       },
     });
 

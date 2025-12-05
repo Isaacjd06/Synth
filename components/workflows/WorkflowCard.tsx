@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
+import WorkflowStatusBadge from "@/components/workflows/WorkflowStatusBadge";
+import { truncate } from "@/lib/utils";
 
 interface WorkflowCardProps {
   id: string;
@@ -15,11 +16,8 @@ export default function WorkflowCard({
   description,
   active,
 }: WorkflowCardProps) {
-  // Truncate description if too long
   const truncatedDescription = description
-    ? description.length > 100
-      ? `${description.substring(0, 100)}...`
-      : description
+    ? truncate(description, 100)
     : "No description";
 
   return (
@@ -30,9 +28,7 @@ export default function WorkflowCard({
             <h3 className="text-lg font-semibold text-white flex-1 pr-2">
               {name}
             </h3>
-            <Badge variant={active ? "active" : "inactive"}>
-              {active ? "Active" : "Inactive"}
-            </Badge>
+            <WorkflowStatusBadge active={active} />
           </div>
           <p className="text-sm text-gray-400 flex-1 line-clamp-3">
             {truncatedDescription}

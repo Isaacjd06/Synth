@@ -7,6 +7,8 @@ interface Execution {
   user_id: string;
   input_data: any;
   output_data: any;
+  status?: string | null;
+  pipedream_execution_id?: string | null;
   created_at: string;
   finished_at: string | null;
   workflow?: {
@@ -45,11 +47,11 @@ export default async function ExecutionsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto px-4 lg:px-6 py-4 lg:py-6 w-full max-w-full overflow-x-hidden">
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-white mb-2">Executions</h1>
-        <p className="text-gray-400 text-sm">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Executions</h1>
+        <p className="text-gray-400 text-xs sm:text-sm">
           Recent workflow runs across Synth.
           {executions.length > 0 && (
             <span className="ml-2 text-gray-500">
@@ -75,7 +77,7 @@ export default async function ExecutionsPage() {
 
       {/* Executions List */}
       {!error && executions.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {executions.map((execution) => (
             <ExecutionRow key={execution.id} execution={execution} />
           ))}

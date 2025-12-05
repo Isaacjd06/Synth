@@ -41,15 +41,15 @@ export default async function WorkflowsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto px-4 lg:px-6 py-4 lg:py-6 w-full max-w-full overflow-x-hidden">
       {/* Page Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white mb-2">Workflows</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Workflows</h1>
           <p className="text-gray-400 text-sm">Manage your automation workflows.</p>
         </div>
-        <Link href="/workflows/create">
-          <Button variant="primary">+ Create Workflow</Button>
+        <Link href="/workflows/create" className="w-full sm:w-auto">
+          <Button variant="primary" className="w-full sm:w-auto">+ Create Workflow</Button>
         </Link>
       </div>
 
@@ -69,7 +69,7 @@ export default async function WorkflowsPage() {
 
       {/* Workflows Grid */}
       {!error && workflows.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {workflows.map((workflow) => (
             <WorkflowCard
               key={workflow.id}

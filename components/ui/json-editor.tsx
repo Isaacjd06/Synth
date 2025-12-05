@@ -22,9 +22,9 @@ export default function JsonEditor({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "w-full h-96 p-4 bg-black/40 border rounded-md text-sm font-mono text-gray-300",
+          "w-full h-96 p-3 md:p-4 bg-black/40 border rounded-md text-xs md:text-sm font-mono text-gray-300",
           "focus:outline-none focus:ring-2 focus:ring-[#194c92] focus:border-[#194c92]",
-          "resize-none",
+          "resize-none overflow-x-auto",
           error
             ? "border-red-500 focus:ring-red-500 focus:border-red-500"
             : "border-gray-700",

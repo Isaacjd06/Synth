@@ -1,10 +1,17 @@
 /**
  * GET /api/workflows/sync-executions
- * Synchronizes execution history from n8n to Supabase
+ * 
+ * DEPRECATED: This route was for n8n integration. 
+ * MVP uses Pipedream only, and executions are logged automatically during workflow runs.
+ * 
+ * For MVP, use the regular execution endpoints (/api/executions) which automatically
+ * log executions when workflows are run via /api/workflows/run.
+ * 
+ * This route is kept for backward compatibility but will not function in MVP.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { prisma } from '@/lib/prisma';
 
 // Minimal type for n8n execution response
 type N8NExecution = {
@@ -22,6 +29,17 @@ type N8NExecution = {
 };
 
 export async function GET(request: NextRequest) {
+  // MVP: This route is deprecated. Executions are automatically logged during workflow runs.
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'This endpoint is deprecated. MVP uses Pipedream, and executions are automatically logged during workflow runs.',
+      message: 'Use /api/executions to view execution history.',
+    },
+    { status: 410 } // 410 Gone - indicates the resource is no longer available
+  );
+
+  /* DEPRECATED CODE - Kept for reference
   try {
     const N8N_URL = process.env.N8N_URL || 'http://127.0.0.1:5678';
     const N8N_API_KEY = process.env.N8N_API_KEY;
@@ -67,39 +85,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get existing n8n_execution_ids to avoid duplicates
-    const { data: existing, error: existingError } = await supabaseServer
-      .from('executions')
-      .select('n8n_execution_id')
-      .not('n8n_execution_id', 'is', null);
-
-    if (existingError) {
-      console.error('❌ Supabase error:', existingError);
-      return NextResponse.json(
-        { error: 'Failed to query existing executions', details: existingError.message },
-        { status: 500 }
-      );
-    }
+    // Get existing pipedream_execution_ids to avoid duplicates (using n8n IDs temporarily stored here)
+    const existing = await prisma.execution.findMany({
+      where: {
+        pipedream_execution_id: { not: null },
+      },
+      select: {
+        pipedream_execution_id: true,
+      },
+    });
 
     const existingIds = new Set(
-      (existing || []).map((e) => e.n8n_execution_id)
+      existing.map((e) => e.pipedream_execution_id).filter(Boolean) as string[]
     );
 
     // Get workflow mappings (n8n_workflow_id -> id)
-    const { data: workflows, error: workflowError } = await supabaseServer
-      .from('workflows')
-      .select('id, n8n_workflow_id');
-
-    if (workflowError) {
-      console.error('❌ Supabase error:', workflowError);
-      return NextResponse.json(
-        { error: 'Failed to fetch workflows', details: workflowError.message },
-        { status: 500 }
-      );
-    }
+    // NOTE: n8n_workflow_id field temporarily stores Pipedream IDs during MVP
+    const workflows = await prisma.workflows.findMany({
+      where: {
+        n8n_workflow_id: { not: null },
+      },
+      select: {
+        id: true,
+        n8n_workflow_id: true,
+      },
+    });
 
     const workflowMap = new Map<string, string>();
-    (workflows || []).forEach((w) => {
+    workflows.forEach((w) => {
       if (w.n8n_workflow_id) {
         workflowMap.set(w.n8n_workflow_id, w.id);
       }
@@ -112,8 +125,8 @@ export async function GET(request: NextRequest) {
     let skippedCount = 0;
 
     for (const exec of executions) {
-      // Skip if already synced
-      if (existingIds.has(exec.id)) {
+      // Skip if already synced (check by pipedream_execution_id)
+      if (existingIds.has(exec.id.toString())) {
         skippedCount++;
         continue;
       }
@@ -141,32 +154,33 @@ export async function GET(request: NextRequest) {
 
       toInsert.push({
         workflow_id: workflowId,
+        user_id: "00000000-0000-0000-0000-000000000000", // SYSTEM_USER_ID
         input_data: inputData,
         output_data: outputData,
         status: status,
-        n8n_execution_id: exec.id,
-        created_at: exec.startedAt || new Date().toISOString(),
-        finished_at: exec.finishedAt || exec.stoppedAt || new Date().toISOString(),
+        pipedream_execution_id: exec.id.toString(), // Store n8n execution ID in pipedream_execution_id field temporarily
+        created_at: exec.startedAt ? new Date(exec.startedAt) : new Date(),
+        finished_at: exec.finishedAt || exec.stoppedAt ? new Date(exec.finishedAt || exec.stoppedAt!) : null,
       });
     }
 
-    // Bulk insert
+    // Bulk insert using Prisma
     let insertedCount = 0;
     if (toInsert.length > 0) {
-      const { data: inserted, error: insertError } = await supabaseServer
-        .from('executions')
-        .insert(toInsert)
-        .select('id');
-
-      if (insertError) {
+      try {
+        // Prisma doesn't support bulk insert directly, so we'll use createMany
+        const result = await prisma.execution.createMany({
+          data: toInsert,
+          skipDuplicates: true,
+        });
+        insertedCount = result.count;
+      } catch (insertError: any) {
         console.error('❌ Insert error:', insertError);
         return NextResponse.json(
           { error: 'Failed to insert executions', details: insertError.message },
           { status: 500 }
         );
       }
-
-      insertedCount = inserted?.length || 0;
     }
 
     console.log(`🧩 Inserted ${insertedCount}, skipped ${skippedCount}`);
@@ -188,4 +202,5 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  */
 }

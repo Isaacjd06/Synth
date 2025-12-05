@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import JsonEditor from "@/components/ui/json-editor";
@@ -70,6 +71,9 @@ export default function CreateWorkflowPage() {
 
   const handleGenerateDraft = async () => {
     if (!aiPrompt.trim()) {
+      toast.error("Missing Input", {
+        description: "Please enter a workflow description to generate a draft.",
+      });
       setGenerateError("Please enter a workflow description");
       return;
     }
@@ -93,7 +97,11 @@ export default function CreateWorkflowPage() {
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
-        setGenerateError(data.error || "Failed to generate workflow draft");
+        const errorMessage = data.error || "Failed to generate workflow draft";
+        toast.error("Generation Failed", {
+          description: errorMessage,
+        });
+        setGenerateError(errorMessage);
         setGenerating(false);
         return;
       }
@@ -102,9 +110,16 @@ export default function CreateWorkflowPage() {
       const draftJson = JSON.stringify(data.draft, null, 2);
       setJsonInput(draftJson);
       setAiPrompt(""); // Clear the prompt
+      toast.success("Workflow Draft Generated", {
+        description: "The draft has been loaded into the JSON editor. Review and edit as needed.",
+      });
       setGenerating(false);
     } catch (err: any) {
-      setGenerateError(err.message || "An error occurred while generating the workflow");
+      const errorMessage = err.message || "An error occurred while generating the workflow";
+      toast.error("Network Error", {
+        description: errorMessage,
+      });
+      setGenerateError(errorMessage);
       setGenerating(false);
     }
   };
@@ -117,6 +132,9 @@ export default function CreateWorkflowPage() {
 
     // Validate JSON
     if (!validateJson(jsonInput)) {
+      toast.error("Invalid JSON", {
+        description: jsonError || "Please fix the JSON errors before submitting.",
+      });
       return;
     }
 
@@ -137,12 +155,20 @@ export default function CreateWorkflowPage() {
 
       if (!res.ok) {
         // Handle error response
-        setSubmitError(data.error || "Failed to create workflow");
+        const errorMessage = data.error || "Failed to create workflow";
+        setSubmitError(errorMessage);
         if (data.details) {
           setDetails(data.details);
         }
         if (data.missingApps) {
           setMissingApps(data.missingApps);
+          toast.error("Missing App Connections", {
+            description: `Please connect the following apps: ${data.missingApps.join(", ")}`,
+          });
+        } else {
+          toast.error("Workflow Creation Failed", {
+            description: errorMessage,
+          });
         }
         setLoading(false);
         return;
@@ -152,24 +178,35 @@ export default function CreateWorkflowPage() {
       // API returns workflow object directly with id field
       const workflowId = data.id || (data.data && data.data.id);
       if (workflowId) {
+        toast.success("Workflow Created", {
+          description: "Your workflow has been created successfully.",
+        });
         router.push(`/workflows/${workflowId}`);
       } else {
-        setSubmitError("Workflow created but no ID returned");
+        const errorMessage = "Workflow created but no ID returned";
+        toast.error("Unexpected Error", {
+          description: errorMessage,
+        });
+        setSubmitError(errorMessage);
         setLoading(false);
       }
     } catch (err: any) {
-      setSubmitError(err.message || "An error occurred while creating the workflow");
+      const errorMessage = err.message || "An error occurred while creating the workflow";
+      toast.error("Network Error", {
+        description: errorMessage,
+      });
+      setSubmitError(errorMessage);
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="space-y-6">
+    <div className="max-w-6xl mx-auto px-4 lg:px-6 py-4 lg:py-6 w-full max-w-full overflow-x-hidden">
+      <div className="space-y-4 sm:space-y-6">
         {/* Page Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-white mb-2">Create Workflow</h1>
-          <p className="text-gray-400 text-sm">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Create Workflow</h1>
+          <p className="text-gray-400 text-xs sm:text-sm">
             Use AI to generate a draft, select a template, or paste your workflow JSON below. The workflow will be validated before creation.
           </p>
         </div>
@@ -182,7 +219,7 @@ export default function CreateWorkflowPage() {
               Select a template to pre-fill the workflow JSON.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {WORKFLOW_TEMPLATES.map((template) => (
             <button
               key={template.id}
@@ -275,6 +312,7 @@ export default function CreateWorkflowPage() {
             onClick={handleSubmit}
             loading={loading}
             disabled={loading || !jsonInput.trim()}
+            className="w-full sm:w-auto"
           >
             Create Workflow
           </Button>

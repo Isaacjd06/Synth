@@ -8,6 +8,8 @@ interface CreateExecutionBody {
   workflow_id: string;
   input_data?: any;
   output_data?: any;
+  status?: string;
+  pipedream_execution_id?: string;
   finished_at?: string;
 }
 
@@ -15,6 +17,8 @@ interface UpdateExecutionBody {
   id: string;
   input_data?: any;
   output_data?: any;
+  status?: string;
+  pipedream_execution_id?: string;
   finished_at?: string;
 }
 
@@ -86,6 +90,8 @@ export async function POST(request: NextRequest) {
         user_id: workflow.user_id,
         input_data: body.input_data,
         output_data: body.output_data,
+        status: body.status || "unknown",
+        pipedream_execution_id: body.pipedream_execution_id || null,
         finished_at: body.finished_at ? new Date(body.finished_at) : null,
       },
     });
@@ -132,6 +138,8 @@ export async function PUT(request: NextRequest) {
       data: {
         input_data: body.input_data,
         output_data: body.output_data,
+        status: body.status,
+        pipedream_execution_id: body.pipedream_execution_id,
         finished_at: body.finished_at ? new Date(body.finished_at) : undefined,
       },
     });

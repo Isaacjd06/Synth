@@ -103,10 +103,10 @@ const httpRequestActionSchema = z.object({
       .string()
       .optional(), // we'll allow any method string, keep it flexible
     headers: z
-      .record(z.string())
+      .record(z.string(), z.string())
       .optional(),
     query: z
-      .record(z.string())
+      .record(z.string(), z.string())
       .optional(),
     body: z.unknown().optional(),
     authRef: z.string().optional(),
@@ -126,7 +126,7 @@ const setDataActionSchema = z.object({
     .min(1, "Action id cannot be empty"),
   type: z.literal("set_data"),
   params: z.object({
-    fields: z.record(z.unknown()),
+    fields: z.record(z.string(), z.unknown()),
   }),
   onSuccessNext: z
     .array(z.string())
@@ -229,7 +229,7 @@ export const WorkflowPlanSchema = z.object({
     .array(ActionDefinitionSchema)
     .min(1, "Workflow must have at least one action"),
   metadata: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .optional(),
 });
 
@@ -240,17 +240,17 @@ export type WorkflowPlanInput = z.infer<typeof WorkflowPlanSchema>;
 export function parseTriggerDefinition(
   raw: unknown
 ): TriggerDefinition {
-  return TriggerDefinitionSchema.parse(raw);
+  return TriggerDefinitionSchema.parse(raw) as TriggerDefinition;
 }
 
 export function parseActionDefinition(
   raw: unknown
 ): ActionDefinition {
-  return ActionDefinitionSchema.parse(raw);
+  return ActionDefinitionSchema.parse(raw) as ActionDefinition;
 }
 
 export function parseWorkflowPlan(
   raw: unknown
 ): WorkflowPlan {
-  return WorkflowPlanSchema.parse(raw);
+  return WorkflowPlanSchema.parse(raw) as WorkflowPlan;
 }

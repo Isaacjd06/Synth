@@ -28,7 +28,7 @@ import {
     // Step 1: Validate shape with Zod
     let parsed: WorkflowPlan;
     try {
-      parsed = WorkflowPlanSchema.parse(raw);
+      parsed = WorkflowPlanSchema.parse(raw) as WorkflowPlan;
     } catch (err: any) {
       return {
         ok: false,

@@ -3,13 +3,15 @@ import type { WorkflowPlan } from "@/lib/workflow/types";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
-interface GenerateWorkflowPlanResult {
-  ok: true;
-  draft: WorkflowPlan;
-} | {
-  ok: false;
-  error: string;
-};
+type GenerateWorkflowPlanResult =
+  | {
+      ok: true;
+      draft: WorkflowPlan;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 
 /**
  * Generates a WorkflowPlan JSON draft from natural language prompt

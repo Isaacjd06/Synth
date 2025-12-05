@@ -2,45 +2,133 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { 
+  LayoutDashboard, 
+  Workflow, 
+  PlusCircle, 
+  PlaySquare, 
+  BookOpen,
+  MessageSquare
+} from "lucide-react";
+import { useState } from "react";
 
 const navigationItems = [
-  { label: "Workflows", href: "/workflows" },
-  { label: "Create Workflow", href: "/workflows/create" },
-  { label: "Executions", href: "/executions" },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Chat", href: "/chat", icon: MessageSquare },
+  { label: "Workflows", href: "/workflows", icon: Workflow },
+  { label: "Create Workflow", href: "/workflows/create", icon: PlusCircle },
+  { label: "Executions", href: "/executions", icon: PlaySquare },
+  { label: "Knowledgebase", href: "/knowledgebase", icon: BookOpen, placeholder: true },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  const isActive = (href: string) => {
+    // Exact matches first (for specific routes like /workflows/create)
+    if (pathname === href) {
+      return true;
+    }
+    
+    // Special handling for /workflows - should highlight on /workflows and /workflows/[id]
+    // but NOT on /workflows/create (which has its own link)
+    if (href === "/workflows") {
+      return pathname === "/workflows" || 
+        (pathname?.startsWith("/workflows/") && pathname !== "/workflows/create");
+    }
+    
+    // All other routes use exact match only
+    return false;
+  };
 
   return (
-    <aside className="fixed left-0 top-16 bottom-0 w-60 bg-[#0a0a0a] border-r border-gray-800 z-[9] overflow-y-auto">
-      <nav className="p-4">
-        <ul className="space-y-1">
-          {navigationItems.map((item) => {
-            const isActive = pathname === item.href || 
-              (item.href !== "/workflows" && pathname?.startsWith(item.href));
-            
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`
-                    block px-4 py-2 rounded-md text-sm font-medium transition-colors
-                    ${
-                      isActive
-                        ? "bg-[#194c92] text-white"
-                        : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                    }
-                  `}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-    </aside>
+    <>
+      {/* Mobile menu button */}
+      <button
+        onClick={() => setIsMobileOpen(!isMobileOpen)}
+        className="lg:hidden fixed top-20 left-4 z-50 p-2 bg-gray-900 border border-gray-800 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition-colors shadow-lg"
+        aria-label="Toggle menu"
+      >
+        <svg
+          className="w-6 h-6"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          {isMobileOpen ? (
+            <path d="M6 18L18 6M6 6l12 12" />
+          ) : (
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          )}
+        </svg>
+      </button>
+
+      {/* Sidebar - Fixed width on desktop, drawer on mobile */}
+      <aside
+        className={`
+          fixed left-0 top-16 bottom-0 w-60 bg-[#0a0a0a] border-r border-gray-800 z-40 overflow-y-auto
+          transition-transform duration-300 ease-in-out
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0
+        `}
+      >
+        <nav className="p-3">
+          <ul className="space-y-1">
+            {navigationItems.map((item) => {
+              const active = isActive(item.href);
+              const Icon = item.icon;
+              
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={(e) => {
+                      setIsMobileOpen(false);
+                      if (item.placeholder) {
+                        e.preventDefault();
+                      }
+                    }}
+                    className={`
+                      flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all
+                      min-h-[44px] cursor-pointer
+                      ${
+                        active
+                          ? "bg-[#194c92] text-white shadow-lg shadow-[#194c92]/20"
+                          : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                      }
+                      ${item.placeholder ? "opacity-60 cursor-not-allowed" : ""}
+                    `}
+                  >
+                    <Icon 
+                      className={`
+                        w-5 h-5 flex-shrink-0
+                        ${active ? "text-white" : "text-gray-400"}
+                      `} 
+                    />
+                    <span className="flex-1">{item.label}</span>
+                    {item.placeholder && (
+                      <span className="text-xs text-gray-500">Soon</span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </aside>
+
+      {/* Mobile overlay */}
+      {isMobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
+    </>
   );
 }
 

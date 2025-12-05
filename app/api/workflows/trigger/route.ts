@@ -1,19 +1,24 @@
 /**
  * POST /api/workflows/trigger
  *
- * Triggers an existing workflow in n8n on demand
+ * LEGACY ROUTE: This route is deprecated. Use /api/workflows/run instead.
+ * This route has been converted from n8n to Pipedream for MVP.
+ *
+ * Triggers an existing workflow in Pipedream on demand
  *
  * Flow:
  * 1. Accept workflow ID and optional input data
- * 2. Fetch workflow from Supabase to get n8n workflow ID
- * 3. Execute workflow in n8n via REST API
- * 4. Save execution record to Supabase executions table
+ * 2. Fetch workflow from Neon (Prisma) to get Pipedream workflow ID (stored in n8n_workflow_id field)
+ * 3. Execute workflow in Pipedream via REST API
+ * 4. Save execution record to Neon executions table
  * 5. Return execution details
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
-import { executeWorkflow } from '@/lib/n8nClient';
+import { prisma } from '@/lib/prisma';
+import { runWorkflow } from '@/lib/pipedream/runWorkflow';
+
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,83 +32,92 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Fetch workflow from Supabase
-    const { data: workflow, error: fetchError } = await supabaseServer
-      .from('workflows')
-      .select('id, name, n8n_workflow_id, active')
-      .eq('id', body.workflow_id)
-      .single();
+    // Step 1: Fetch workflow from Neon (Prisma)
+    const workflow = await prisma.workflows.findFirst({
+      where: {
+        id: body.workflow_id,
+        user_id: SYSTEM_USER_ID,
+      },
+      select: {
+        id: true,
+        name: true,
+        n8n_workflow_id: true, // Temporarily stores Pipedream workflow ID
+        active: true,
+        user_id: true,
+      },
+    });
 
-    if (fetchError || !workflow) {
+    if (!workflow) {
       return NextResponse.json(
         { error: 'Workflow not found' },
         { status: 404 }
       );
     }
 
-    // Check if workflow has n8n ID
+    // Check if workflow has Pipedream ID (stored in n8n_workflow_id field temporarily)
     if (!workflow.n8n_workflow_id) {
       return NextResponse.json(
         {
-          error: 'Workflow is not linked to n8n',
-          details: 'This workflow was not successfully created in n8n',
+          error: 'Workflow is not activated',
+          details: 'This workflow has not been deployed to Pipedream. Please activate it first.',
         },
         { status: 400 }
       );
     }
 
-    // Step 2: Execute workflow in n8n
-    let n8nExecution;
-    try {
-      n8nExecution = await executeWorkflow(
-        workflow.n8n_workflow_id,
-        body.input || {}
-      );
-    } catch (n8nError) {
-      console.error('Failed to execute workflow in n8n:', n8nError);
+    // Step 2: Execute workflow in Pipedream
+    const runResult = await runWorkflow(
+      workflow.n8n_workflow_id, // This is actually the Pipedream workflow ID
+      body.input || {}
+    );
 
-      // Save failed execution to Supabase
-      await supabaseServer.from('executions').insert({
-        workflow_id: workflow.id,
-        n8n_execution_id: null,
-        status: 'error',
-        input: body.input || {},
-        output: {
-          error: n8nError instanceof Error ? n8nError.message : 'Unknown error',
+    if (!runResult.ok) {
+      // Save failed execution to Neon (Prisma)
+      await prisma.execution.create({
+        data: {
+          workflow_id: workflow.id,
+          user_id: workflow.user_id,
+          input_data: body.input || {},
+          output_data: {
+            error: runResult.error,
+            details: runResult.details,
+          },
+          status: 'failure',
+          pipedream_execution_id: null,
+          finished_at: new Date(),
         },
-        created_at: new Date().toISOString(),
       });
 
       return NextResponse.json(
         {
-          error: 'Failed to execute workflow in n8n',
-          details: n8nError instanceof Error ? n8nError.message : 'Unknown error',
+          error: 'Failed to execute workflow in Pipedream',
+          details: runResult.error || runResult.details,
         },
         { status: 500 }
       );
     }
 
-    // Step 3: Save execution to Supabase
-    const executionStatus = n8nExecution.finished ? 'success' : 'running';
+    const execution = runResult.execution;
 
-    const { data: savedExecution, error: insertError } = await supabaseServer
-      .from('executions')
-      .insert({
-        workflow_id: workflow.id,
-        n8n_execution_id: n8nExecution.id,
-        status: executionStatus,
-        input: body.input || {},
-        output: n8nExecution.data || {},
-        started_at: n8nExecution.startedAt,
-        finished_at: n8nExecution.stoppedAt || null,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    // Step 3: Save execution to Neon (Prisma)
+    const executionStatus = execution.status || (execution.finished_at ? 'success' : 'running');
 
-    if (insertError) {
-      console.error('Failed to save execution to Supabase:', insertError);
-      // Non-fatal: execution ran successfully in n8n
+    let savedExecution;
+    try {
+      savedExecution = await prisma.execution.create({
+        data: {
+          workflow_id: workflow.id,
+          user_id: workflow.user_id,
+          input_data: body.input || {},
+          output_data: execution.data?.output || null,
+          status: executionStatus,
+          pipedream_execution_id: execution.id || null,
+          finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
+        },
+      });
+    } catch (insertError: any) {
+      console.error('Failed to save execution to Neon:', insertError);
+      // Non-fatal: execution ran successfully in Pipedream
     }
 
     // Step 4: Return success response
@@ -115,10 +129,10 @@ export async function POST(request: NextRequest) {
           id: savedExecution?.id || null,
           workflow_id: workflow.id,
           workflow_name: workflow.name,
-          n8n_execution_id: n8nExecution.id,
+          pipedream_execution_id: execution.id || null,
           status: executionStatus,
-          started_at: n8nExecution.startedAt,
-          finished_at: n8nExecution.stoppedAt || null,
+          started_at: execution.started_at,
+          finished_at: execution.finished_at || null,
         },
       },
       { status: 200 }

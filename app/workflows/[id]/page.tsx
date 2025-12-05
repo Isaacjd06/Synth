@@ -3,6 +3,7 @@ import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import RunWorkflowButton from "@/components/workflows/RunWorkflowButton";
 import ExecutionHistory from "@/components/workflows/ExecutionHistory";
+import { formatStatus } from "@/lib/utils";
 
 interface Workflow {
   id: string;
@@ -21,6 +22,7 @@ interface Execution {
   user_id: string;
   input_data: any;
   output_data: any;
+  status?: string | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -83,18 +85,18 @@ export default async function WorkflowDetailPage({
   );
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="space-y-6">
+    <div className="max-w-6xl mx-auto px-4 lg:px-6 py-4 lg:py-6 w-full max-w-full overflow-x-hidden">
+      <div className="space-y-4 sm:space-y-6">
         {/* Header Section */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <h1 className="text-2xl font-semibold text-white">{workflow.name}</h1>
-            <Badge variant={workflow.active ? "active" : "inactive"}>
-              {workflow.active ? "Active" : "Inactive"}
+        <div className="mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+            <h1 className="text-xl sm:text-2xl font-semibold text-white break-words">{workflow.name}</h1>
+            <Badge variant={workflow.active ? "active" : "inactive"} className="self-start sm:self-auto">
+              {formatStatus(workflow.active ? "active" : "inactive")}
             </Badge>
           </div>
           {workflow.description && (
-            <p className="text-gray-400">{workflow.description}</p>
+            <p className="text-gray-400 text-sm sm:text-base break-words">{workflow.description}</p>
           )}
         </div>
 
@@ -111,7 +113,7 @@ export default async function WorkflowDetailPage({
           {workflow.trigger && (
             <div>
               <h3 className="text-sm font-medium text-gray-300 mb-2">Trigger</h3>
-              <pre className="bg-black/40 p-4 rounded text-sm overflow-x-auto text-gray-300">
+              <pre className="bg-black/40 p-3 sm:p-4 rounded text-xs sm:text-sm overflow-x-auto text-gray-300">
                 {JSON.stringify(workflow.trigger, null, 2)}
               </pre>
             </div>
@@ -121,7 +123,7 @@ export default async function WorkflowDetailPage({
           {workflow.actions && (
             <div>
               <h3 className="text-sm font-medium text-gray-300 mb-2">Actions</h3>
-              <pre className="bg-black/40 p-4 rounded text-sm overflow-x-auto text-gray-300">
+              <pre className="bg-black/40 p-3 sm:p-4 rounded text-xs sm:text-sm overflow-x-auto text-gray-300">
                 {JSON.stringify(workflow.actions, null, 2)}
               </pre>
             </div>

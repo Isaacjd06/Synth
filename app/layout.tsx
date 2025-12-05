@@ -2,7 +2,8 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import Header from "@/components/ui/Header";
-import Sidebar from "@/components/ui/Sidebar";
+import AppShell from "@/components/layout/AppShell";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -13,13 +14,13 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className="overflow-x-hidden">
+      <body className={inter.className + " overflow-x-hidden"}>
         <Header />
-        <Sidebar />
-        <main className="ml-60 mt-16 p-6 min-h-screen">
+        <AppShell>
           {children}
-        </main>
+        </AppShell>
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );
