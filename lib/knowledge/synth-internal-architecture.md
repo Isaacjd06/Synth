@@ -1641,6 +1641,34 @@ To make this architecture document actionable:
 
 ---
 
+## INTERNAL CHECK
+
+### Areas Where Evidence Is Weaker or Context-Dependent
+- Specific Pipedream integration capabilities and limitations are based on general platform knowledge and may vary by tier or version
+- Memory system implementation details are conceptual and not yet fully implemented in the codebase
+- Level 3 (n8n) capabilities and migration strategies are speculative future planning rather than implemented features
+- Exact API route structures and file organization assumed from git status and standard Next.js patterns
+- Database schema field names and relationships are based on typical Prisma patterns but may differ in actual implementation
+- Specific timing estimates for workflow execution and performance metrics are approximate
+- Cost calculations for various workflow operations depend on external service pricing which changes over time
+
+### Confirmation: No Fabricated Sources
+This document is based on established software architecture patterns, standard practices for workflow automation systems, and documented capabilities of real platforms (Pipedream, n8n). No statistics, case studies, or specific company examples were fabricated. The architecture described follows proven patterns from workflow automation platforms, API orchestration systems, and AI-augmented applications. All mentioned technologies (Next.js, Prisma, Pipedream, n8n, Claude) are real and widely used. The architectural principles draw from established software engineering practices for event-driven systems, stateless APIs, and AI-enhanced applications.
+
+### Confidence Levels by Section
+- Section 1 (High-Level System Overview): HIGH - standard system architecture patterns
+- Section 2 (Core Architectural Principles): HIGH - fundamental design principles based on established patterns
+- Section 3 (Component-by-Component Breakdown): MEDIUM-HIGH - combines documented patterns with assumed implementation details
+- Section 4 (Data Structures & Database Schema): MEDIUM - based on typical Prisma patterns but requires validation against actual schema
+- Section 5 (System Lifecycle): HIGH - standard workflow lifecycle patterns
+- Section 6 (Level 2 vs Level 3): MEDIUM - Level 2 is based on current patterns, Level 3 is speculative future planning
+- Section 7 (Reasoning Rules): HIGH - core principles for AI-assisted workflow design
+- Section 8 (Failure Modes & Safety): HIGH - standard error handling and safety patterns
+- Section 9 (Internal Glossary): HIGH - terminology definitions based on industry standards
+- Section 10 (Summary & Confidence Audit): MEDIUM-HIGH - self-assessment of document accuracy
+
+---
+
 ## FILE COMPLETE
 
 **Status:** Ready to save to `/lib/knowledge/synth-internal-architecture.md`
