@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/Button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2 } from "lucide-react";
+import SubscriptionGate from "@/components/subscription/SubscriptionGate";
+import SubscriptionInactiveBanner from "@/components/subscription/SubscriptionInactiveBanner";
 
 interface ChatMessage {
   id: string;
@@ -149,14 +151,16 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto w-full">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold text-white mb-2">Chat</h1>
-        <p className="text-gray-400 text-sm">
-          Ask me to create workflows, run them, or ask questions.
-        </p>
-      </div>
+      <SubscriptionGate>
+        <SubscriptionInactiveBanner />
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold text-white mb-2">Chat</h1>
+          <p className="text-gray-400 text-sm">
+            Ask me to create workflows, run them, or ask questions.
+          </p>
+        </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <Card className="flex-1 flex flex-col overflow-hidden min-h-0">
         <CardContent className="flex-1 p-0 flex flex-col min-h-0">
           {isLoadingInitial ? (
             <div className="flex items-center justify-center h-full">
@@ -233,6 +237,7 @@ export default function ChatPage() {
           </div>
         </CardContent>
       </Card>
+      </SubscriptionGate>
     </div>
   );
 }

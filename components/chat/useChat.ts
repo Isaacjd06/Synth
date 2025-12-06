@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
-
 export interface ChatMessage {
   id: string;
   user_id: string;
@@ -40,14 +38,18 @@ export function useChat(options: UseChatOptions = {}) {
       setLoading(true);
       setError(null);
 
-      const params = new URLSearchParams({
-        user_id: SYSTEM_USER_ID,
-      });
-      if (options.conversationId) {
-        params.append("conversation_id", options.conversationId);
+      // Only load messages if we have a conversation ID
+      if (!options.conversationId) {
+        setMessages([]);
+        setLoading(false);
+        return;
       }
 
-      const response = await fetch(`/api/chat?${params.toString()}`, {
+      const params = new URLSearchParams({
+        conversation_id: options.conversationId,
+      });
+
+      const response = await fetch(`/api/chat/messages?${params.toString()}`, {
         cache: "no-store",
       });
 
@@ -63,10 +65,20 @@ export function useChat(options: UseChatOptions = {}) {
       }
 
       const data = await response.json();
-      console.log("Chat API response:", { success: data.success, dataLength: data.data?.length });
+      console.log("Chat API response:", { ok: data.ok, messagesLength: data.messages?.length });
       
-      if (data.success && Array.isArray(data.data)) {
-        setMessages(data.data);
+      if (data.ok && Array.isArray(data.messages)) {
+        // Transform messages to match ChatMessage interface
+        const transformedMessages = data.messages.map((msg: any) => ({
+          id: msg.id,
+          user_id: msg.user_id || "",
+          role: msg.role,
+          content: msg.content,
+          conversation_id: msg.conversation_id,
+          created_at: msg.created_at,
+          metadata: msg.metadata,
+        }));
+        setMessages(transformedMessages);
         // Auto-scroll after loading
         setTimeout(() => {
           if (shouldAutoScrollRef.current) {
@@ -97,17 +109,14 @@ export function useChat(options: UseChatOptions = {}) {
   const saveMessage = useCallback(
     async (message: Omit<ChatMessage, "id" | "created_at">): Promise<ChatMessage | null> => {
       try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: SYSTEM_USER_ID,
-            role: message.role,
-            content: message.content,
-            conversation_id: options.conversationId || null,
-            metadata: message.metadata || null,
-          }),
-        });
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: message.content,
+          session_id: options.conversationId || undefined,
+        }),
+      });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -141,7 +150,7 @@ export function useChat(options: UseChatOptions = {}) {
       // Optimistically add user message
       const userMessage: ChatMessage = {
         id: `temp-${Date.now()}`,
-        user_id: SYSTEM_USER_ID,
+        user_id: "", // Will be populated by API response
         role: "user",
         content: content.trim(),
         conversation_id: options.conversationId || null,
@@ -198,7 +207,7 @@ export function useChat(options: UseChatOptions = {}) {
         
         const assistantMessage: ChatMessage = {
           id: `temp-assistant-${Date.now()}`,
-          user_id: SYSTEM_USER_ID,
+          user_id: "", // Will be populated by API response
           role: "assistant",
           content: replyText,
           conversation_id: options.conversationId || null,

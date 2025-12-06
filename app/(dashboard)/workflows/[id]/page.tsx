@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Badge from "@/components/ui/Badge";
 import WorkflowRunButton from "@/components/workflows/WorkflowRunButton";
 import WorkflowExecutions from "@/components/workflows/WorkflowExecutions";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import SubscriptionGate from "@/components/subscription/SubscriptionGate";
+import SubscriptionInactiveBanner from "@/components/subscription/SubscriptionInactiveBanner";
 
 export default async function WorkflowDetailPage({
   params,
@@ -15,15 +15,11 @@ export default async function WorkflowDetailPage({
 }) {
   const { id } = await params;
 
-  // Authenticate and validate admin user
+  // Authenticate user
   const session = await auth();
 
   if (!session || !session.user) {
     redirect("/api/auth/signin");
-  }
-
-  if (session.user.id !== SYSTEM_USER_ID) {
-    redirect("/");
   }
 
   // Fetch workflow from database
@@ -51,6 +47,8 @@ export default async function WorkflowDetailPage({
 
   return (
     <div className="max-w-7xl mx-auto">
+      <SubscriptionGate>
+        <SubscriptionInactiveBanner />
       {/* Header Section */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
@@ -153,6 +151,7 @@ export default async function WorkflowDetailPage({
         {/* Recent Executions Section */}
         <WorkflowExecutions workflowId={workflow.id} />
       </div>
+      </SubscriptionGate>
     </div>
   );
 }

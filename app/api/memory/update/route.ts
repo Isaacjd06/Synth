@@ -1,19 +1,34 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { logUsage } from "@/lib/usage";
+import { logAudit } from "@/lib/audit";
+import { Events } from "@/lib/events";
+import { logError } from "@/lib/error-logger";
+import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+const memoryLimiter = createRateLimiter("memory", 15, 60);
 
 export async function POST(req: Request) {
   try {
+    // Check rate limit
+    await rateLimitOrThrow(req, memoryLimiter);
+
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body = await req.json();
     const { id, context_type, content, relevance_score, metadata } = body;
 
     if (!id) {
       return NextResponse.json(
         { error: "Memory ID is required." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -21,14 +36,14 @@ export async function POST(req: Request) {
     const existing = await prisma.memory.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
       },
     });
 
     if (!existing) {
       return NextResponse.json(
         { error: "Memory entry not found." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -36,7 +51,8 @@ export async function POST(req: Request) {
     const updateData: any = {};
     if (context_type !== undefined) updateData.context_type = context_type;
     if (content !== undefined) updateData.content = content;
-    if (relevance_score !== undefined) updateData.relevance_score = relevance_score;
+    if (relevance_score !== undefined)
+      updateData.relevance_score = relevance_score;
     if (metadata !== undefined) updateData.metadata = metadata;
     updateData.last_accessed = new Date(); // Always update last_accessed
 
@@ -45,22 +61,37 @@ export async function POST(req: Request) {
       data: updateData,
     });
 
+    // Log usage
+    await logUsage(userId, "memory_write");
+
+    // Log audit event
+    await logAudit("memory.write", userId, {
+      memory_id: id,
+      context_type: updated.context_type,
+    });
+
+    // Emit event
+    Events.emit("memory:updated", {
+      memory_id: id,
+      user_id: userId,
+      context_type: updated.context_type,
+    });
+
     return NextResponse.json(
       {
         ok: true,
         memory: updated,
       },
-      { status: 200 }
+      { status: 200 },
     );
-
   } catch (error: any) {
-    console.error("MEMORY UPDATE ERROR:", error);
+    logError("app/api/memory/update", error);
     return NextResponse.json(
       {
         ok: false,
         error: error.message || "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

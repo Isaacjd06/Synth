@@ -1,14 +1,21 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import { setWorkflowActive } from "@/lib/pipedreamClient";
+import { logError } from "@/lib/error-logger";
 
 export async function POST(req: Request) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body = await req.json();
 
     const { id, name, description, intent, trigger, actions, active } = body;
@@ -24,7 +31,7 @@ export async function POST(req: Request) {
     const existingWorkflow = await prisma.workflows.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID, // Security scope
+        user_id: userId,
       },
     });
 
@@ -74,7 +81,7 @@ export async function POST(req: Request) {
       const plan = workflowValidation.plan;
 
       // Validate app connections before updating workflow
-      const connectionValidation = await validateAppConnections(plan, SYSTEM_USER_ID);
+      const connectionValidation = await validateAppConnections(plan, userId);
       if (!connectionValidation.ok) {
         return NextResponse.json(
           {
@@ -86,7 +93,22 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. All validations passed, update workflow
+    // 3. If active status is being changed and workflow has Pipedream ID, sync with Pipedream
+    if (active !== undefined && existingWorkflow.n8n_workflow_id) {
+      try {
+        await setWorkflowActive(existingWorkflow.n8n_workflow_id, active);
+      } catch (error: any) {
+        // Log error but don't fail the update - we still update our DB
+        logError("app/api/workflows/update (Pipedream sync)", error, {
+          workflow_id: id,
+          pipedream_workflow_id: existingWorkflow.n8n_workflow_id,
+          active,
+        });
+        // Continue with database update even if Pipedream sync fails
+      }
+    }
+
+    // 4. All validations passed, update workflow in database
     // Note: user_id check was already done in findFirst above
     const workflow = await prisma.workflows.update({
       where: {

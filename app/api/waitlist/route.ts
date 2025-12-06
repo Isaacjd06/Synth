@@ -4,6 +4,8 @@ import { z } from "zod";
 
 const WaitlistRequestSchema = z.object({
   email: z.string().email("Invalid email address"),
+  name: z.string().optional(),
+  source: z.string().optional().default("landing_page"),
 });
 
 /**
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email } = validationResult.data;
+    const { email, name, source } = validationResult.data;
 
     // Check if email already exists
     const existing = await prisma.waitlist.findUnique({
@@ -43,7 +45,18 @@ export async function POST(req: Request) {
     });
 
     if (existing) {
-      // Don't reveal that email already exists - return success
+      // Update status if it was "converted" (in case they want to rejoin)
+      // Otherwise, don't reveal that email already exists - return success
+      if (existing.status === "converted") {
+        await prisma.waitlist.update({
+          where: { email },
+          data: {
+            status: "waiting",
+            name: name || existing.name,
+            source: source || existing.source,
+          },
+        });
+      }
       return NextResponse.json(
         { success: true },
         { status: 200 }
@@ -54,6 +67,9 @@ export async function POST(req: Request) {
     await prisma.waitlist.create({
       data: {
         email,
+        name: name || null,
+        source: source || "landing_page",
+        status: "waiting",
       },
     });
 

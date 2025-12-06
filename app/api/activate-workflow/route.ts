@@ -7,15 +7,20 @@
  * MVP: Synth uses Pipedream only. This route has been converted from n8n to Pipedream.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { deployWorkflow } from "@/lib/pipedream/deployWorkflow";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
-
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     let body;
     try {
       body = await request.json();
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
     const workflow = await prisma.workflows.findFirst({
       where: {
         id: workflow_id,
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
       },
     });
 
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest) {
     const plan = validation.plan;
 
     // Validate app connections before activating workflow
-    const connectionValidation = await validateAppConnections(plan, SYSTEM_USER_ID);
+    const connectionValidation = await validateAppConnections(plan, userId);
     if (!connectionValidation.ok) {
       return NextResponse.json(
         {

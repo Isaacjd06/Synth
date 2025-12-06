@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const GetMessagesRequestSchema = z.object({
   conversation_id: z.string().min(1, "Conversation ID is required"),
@@ -16,27 +14,16 @@ const GetMessagesRequestSchema = z.object({
  * 
  * Requirements:
  * - User must be authenticated
- * - User must be the admin user (SYSTEM_USER_ID)
+ * - User must have valid subscription
  */
 export async function GET(req: Request) {
   try {
-    // 1. Authenticate user
-    const session = await auth();
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    // 1. Authenticate user and check subscription
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
     }
-
-    // 2. Validate admin user
-    if (session.user.id !== SYSTEM_USER_ID) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: Admin access required" },
-        { status: 403 }
-      );
-    }
+    const { userId } = authResult;
 
     // 3. Parse query parameters
     const { searchParams } = new URL(req.url);
@@ -53,7 +40,7 @@ export async function GET(req: Request) {
     const messages = await prisma.chatMessage.findMany({
       where: {
         conversation_id: conversationId,
-        user_id: session.user.id,
+        user_id: userId,
       },
       orderBy: {
         created_at: "asc",

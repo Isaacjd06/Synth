@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { listExecutions, PipedreamError } from "@/lib/pipedream";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * GET /api/workflows/[id]/executions
@@ -12,7 +10,7 @@ const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
  * 
  * Requirements:
  * - User must be authenticated
- * - User must be the admin user (SYSTEM_USER_ID)
+ * - User must have valid subscription
  * - Workflow must exist and have a Pipedream workflow ID
  * 
  * Returns execution logs as JSON.
@@ -22,23 +20,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. Authenticate user
-    const session = await auth();
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    // 1. Authenticate user and check subscription
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
     }
-
-    // 2. Validate admin user
-    if (session.user.id !== SYSTEM_USER_ID) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: Admin access required" },
-        { status: 403 }
-      );
-    }
+    const { userId } = authResult;
 
     const { id: workflowId } = await params;
 
@@ -49,9 +36,12 @@ export async function GET(
       );
     }
 
-    // 3. Fetch workflow by ID
-    const workflow = await prisma.workflows.findUnique({
-      where: { id: workflowId },
+    // 3. Fetch workflow by ID and verify ownership
+    const workflow = await prisma.workflows.findFirst({
+      where: {
+        id: workflowId,
+        user_id: userId,
+      },
     });
 
     if (!workflow) {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // Type definitions
 interface CreateExecutionBody {
@@ -25,13 +24,19 @@ interface UpdateExecutionBody {
 // GET - Fetch all executions
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const workflowId = searchParams.get("workflow_id");
 
     // Filter by workflow_id if provided, always filter by user_id for security
     const executions = await prisma.execution.findMany({
       where: {
-        user_id: SYSTEM_USER_ID, // Security scope check
+        user_id: userId,
         ...(workflowId ? { workflow_id: workflowId } : {}),
       },
       orderBy: { created_at: "desc" },
@@ -59,6 +64,12 @@ export async function GET(request: NextRequest) {
 // POST - Create a new execution
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body: CreateExecutionBody = await request.json();
 
     // Validate required fields
@@ -69,11 +80,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify workflow exists and belongs to system user
+    // Verify workflow exists and belongs to user
     const workflow = await prisma.workflows.findFirst({
       where: {
         id: body.workflow_id,
-        user_id: SYSTEM_USER_ID, // Security scope check
+        user_id: userId,
       },
     });
 
@@ -87,7 +98,7 @@ export async function POST(request: NextRequest) {
     const execution = await prisma.execution.create({
       data: {
         workflow_id: body.workflow_id,
-        user_id: workflow.user_id,
+        user_id: userId,
         input_data: body.input_data,
         output_data: body.output_data,
         status: body.status || "unknown",
@@ -109,6 +120,12 @@ export async function POST(request: NextRequest) {
 // PUT - Update an execution by id
 export async function PUT(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body: UpdateExecutionBody = await request.json();
 
     if (!body.id) {
@@ -118,11 +135,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check if execution exists and belongs to system user
+    // Check if execution exists and belongs to user
     const existingExecution = await prisma.execution.findFirst({
       where: {
         id: body.id,
-        user_id: SYSTEM_USER_ID, // Security scope check
+        user_id: userId,
       },
     });
 
@@ -157,6 +174,12 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete an execution by id
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -167,11 +190,11 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Check if execution exists and belongs to system user
+    // Check if execution exists and belongs to user
     const existingExecution = await prisma.execution.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID, // Security scope check
+        user_id: userId,
       },
     });
 

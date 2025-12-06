@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { runWorkflow } from "@/lib/pipedream/runWorkflow";
+import { logUsage } from "@/lib/usage";
+import { checkFeature } from "@/lib/feature-gate";
+import { logAudit } from "@/lib/audit";
+import { Events } from "@/lib/events";
+import { logError } from "@/lib/error-logger";
+import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+const workflowRunLimiter = createRateLimiter("workflow-run", 10, 60);
 
 export async function OPTIONS() {
   return new Response(null, {
@@ -17,12 +24,57 @@ export async function OPTIONS() {
 
 export async function POST(request: Request) {
   try {
+    // Check rate limit
+    await rateLimitOrThrow(request, workflowRunLimiter);
+
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            authResult.status === 401
+              ? "Unauthorized"
+              : "Subscription required",
+        },
+        {
+          status: authResult.status,
+          headers: { "Access-Control-Allow-Origin": "*" },
+        },
+      );
+    }
+    const { userId } = authResult;
+
+    // Check if workflow execution is allowed for user's plan
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { plan: true },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "User not found" },
+        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
+
+    if (!checkFeature(user, "allowWorkflowExecution")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Workflow execution is not available on your current plan. Please upgrade to Pro to execute workflows.",
+        },
+        { status: 403, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
+
     const { id, inputData } = await request.json();
 
     if (!id) {
       return NextResponse.json(
         { ok: false, error: "Workflow ID is required" },
-        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
       );
     }
 
@@ -30,14 +82,14 @@ export async function POST(request: Request) {
     const workflow = await prisma.workflows.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID, // Security scope check
+        user_id: userId,
       },
     });
 
     if (!workflow) {
       return NextResponse.json(
         { ok: false, error: "Workflow not found" },
-        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } }
+        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
       );
     }
 
@@ -46,8 +98,11 @@ export async function POST(request: Request) {
 
     if (!pipedreamWorkflowId) {
       return NextResponse.json(
-        { ok: false, error: "Workflow is not activated. Please activate it first." },
-        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+        {
+          ok: false,
+          error: "Workflow is not activated. Please activate it first.",
+        },
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
       );
     }
 
@@ -59,7 +114,7 @@ export async function POST(request: Request) {
       await prisma.execution.create({
         data: {
           workflow_id: id,
-          user_id: workflow.user_id,
+          user_id: userId,
           input_data: inputData || {},
           output_data: { error: runResult.error, details: runResult.details },
           status: "failure",
@@ -67,37 +122,68 @@ export async function POST(request: Request) {
         },
       });
 
+      logError(
+        "app/api/workflows/run (execution failed)",
+        new Error(runResult.error),
+        {
+          workflow_id: id,
+          user_id: userId,
+          details: runResult.details,
+        },
+      );
+
       return NextResponse.json(
         { ok: false, error: runResult.error, details: runResult.details },
-        { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+        { status: 500, headers: { "Access-Control-Allow-Origin": "*" } },
       );
     }
 
     const execution = runResult.execution;
 
     // 4. Log successful execution to Neon database
-    await prisma.execution.create({
+    const executionRecord = await prisma.execution.create({
       data: {
         workflow_id: id,
-        user_id: workflow.user_id,
+        user_id: userId,
         input_data: inputData || {},
         output_data: execution.data?.output || null,
         status: "success",
         pipedream_execution_id: execution.id?.toString() || null,
-        finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
+        finished_at: execution.finished_at
+          ? new Date(execution.finished_at)
+          : null,
       },
+    });
+
+    // 5. Log usage
+    await logUsage(userId, "workflow_run");
+
+    // 5a. Log audit event
+    await logAudit("workflow.run", userId, {
+      workflow_id: id,
+      workflow_name: workflow.name,
+      execution_id: executionRecord.id,
+      status: executionRecord.status,
+    });
+
+    // 5b. Emit event
+    Events.emit("workflow:executed", {
+      workflow_id: id,
+      user_id: userId,
+      execution_id: executionRecord.id,
+      status: executionRecord.status,
     });
 
     return NextResponse.json(
       { ok: true, message: "Workflow executed", execution },
-      { status: 200, headers: { "Access-Control-Allow-Origin": "*" } }
+      { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   } catch (err: any) {
-    console.error("Workflow execution error:", err.message);
+    logError("app/api/workflows/run", err);
 
     return NextResponse.json(
       { ok: false, error: err.message || "Internal server error" },
-      { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+      { status: 500, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }
 }

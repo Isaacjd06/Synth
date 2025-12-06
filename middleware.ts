@@ -1,28 +1,33 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import { getAccessLevelFromSession } from "@/lib/access-control";
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Public routes - allow access
-  const publicRoutes = ["/", "/waitlist"];
+  const publicRoutes = ["/", "/waitlist", "/pricing"];
   const isPublicRoute =
-    publicRoutes.includes(pathname) || pathname.startsWith("/api/auth/");
+    publicRoutes.includes(pathname) ||
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/waitlist") ||
+    pathname.startsWith("/api/webhooks/stripe");
 
   if (isPublicRoute) {
     return NextResponse.next();
   }
 
-  // Protected routes - require admin access
+  // Protected routes - require authentication (but allow minimal access)
   const protectedRoutes = [
     "/dashboard",
     "/chat",
     "/workflows",
     "/executions",
     "/settings",
+    "/knowledge",
+    "/billing",
+    "/checkout",
   ];
 
   const isProtectedRoute = protectedRoutes.some(
@@ -31,20 +36,26 @@ export async function middleware(request: NextRequest) {
 
   if (isProtectedRoute) {
     try {
+      // 1. Check authentication (required for all protected routes)
       const session = await auth();
 
-      // Check if user is authenticated
       if (!session || !session.user) {
+        // For landing page, redirect to sign in
+        if (pathname === "/") {
+          const signInUrl = new URL("/api/auth/signin", request.url);
+          signInUrl.searchParams.set("callbackUrl", pathname);
+          return NextResponse.redirect(signInUrl);
+        }
+        // For other routes, redirect to sign in
         const signInUrl = new URL("/api/auth/signin", request.url);
         signInUrl.searchParams.set("callbackUrl", pathname);
         return NextResponse.redirect(signInUrl);
       }
 
-      // Check if user is admin
-      if (session.user.id !== SYSTEM_USER_ID) {
-        // Non-admin users are blocked
-        return NextResponse.redirect(new URL("/", request.url));
-      }
+      // 2. Authenticated users can access protected routes
+      // Individual API routes will handle access control (full vs minimal)
+      // For pages, we allow access - they can show minimal UI if needed
+      return NextResponse.next();
     } catch (error) {
       // Log error and redirect to sign-in on auth failure
       console.error("Auth middleware error:", error);
@@ -52,6 +63,18 @@ export async function middleware(request: NextRequest) {
       signInUrl.searchParams.set("callbackUrl", pathname);
       signInUrl.searchParams.set("error", "AuthError");
       return NextResponse.redirect(signInUrl);
+    }
+  }
+
+  // Redirect authenticated users from landing page to dashboard
+  if (pathname === "/") {
+    try {
+      const session = await auth();
+      if (session?.user) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+    } catch (error) {
+      // If auth check fails, allow landing page
     }
   }
 

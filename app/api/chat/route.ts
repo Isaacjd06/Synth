@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { authenticateUser } from "@/lib/auth-helpers";
+import { hasFullAccess } from "@/lib/access-control";
 import { prisma } from "@/lib/prisma";
 import { detectChatIntent } from "@/lib/ai";
+import { logUsage } from "@/lib/usage";
+import { logAudit } from "@/lib/audit";
+import { Events } from "@/lib/events";
+import { logError } from "@/lib/error-logger";
 import { z } from "zod";
 import { randomUUID } from "crypto";
+import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+const chatLimiter = createRateLimiter("chat", 20, 60);
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1, "Message is required"),
@@ -14,32 +20,38 @@ const ChatRequestSchema = z.object({
 
 /**
  * POST /api/chat
- * 
+ *
  * Processes chat messages and takes actions based on intent.
- * 
+ *
  * Requirements:
  * - User must be authenticated
- * - User must be the admin user (SYSTEM_USER_ID)
  * - Request body must contain { message: string, session_id?: string }
- * 
+ *
  * Returns chat response with action taken and workflow ID if applicable.
  */
 export async function POST(req: Request) {
   try {
+    // 0. Check rate limit
+    await rateLimitOrThrow(req, chatLimiter);
+
     // 1. Authenticate user
-    const session = await auth();
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    const authResult = await authenticateUser();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401
     }
+    const { userId } = authResult;
 
-    // 2. Validate admin user
-    if (session.user.id !== SYSTEM_USER_ID) {
+    // 2. Check if user has full access (paid or trial)
+    const userHasAccess = await hasFullAccess(userId);
+    if (!userHasAccess) {
+      // User is unpaid - return NO_ACCESS response
       return NextResponse.json(
-        { ok: false, error: "Forbidden: Admin access required" },
+        {
+          ok: false,
+          errorCode: "NO_ACCESS",
+          message: "You currently don't have access. Please pay to continue using Synth.",
+          requiresSubscription: true,
+        },
         { status: 403 }
       );
     }
@@ -55,7 +67,7 @@ export async function POST(req: Request) {
           error: "Invalid request body",
           details: validationResult.error.issues,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -67,11 +79,27 @@ export async function POST(req: Request) {
     // 5. Save user message to chat_messages table
     const userMessage = await prisma.chatMessage.create({
       data: {
-        user_id: session.user.id,
+        user_id: userId,
         role: "user",
         content: message,
         conversation_id: conversationId,
       },
+    });
+
+    // 5a. Log usage
+    await logUsage(userId, "chat_message");
+
+    // 5b. Log audit event
+    await logAudit("chat.message", userId, {
+      message_id: userMessage.id,
+      conversation_id: conversationId,
+    });
+
+    // 5c. Emit event
+    Events.emit("chat:message", {
+      message_id: userMessage.id,
+      user_id: userId,
+      conversation_id: conversationId,
     });
 
     // 6. Detect intent using AI
@@ -81,9 +109,10 @@ export async function POST(req: Request) {
       // If intent detection fails, save error response
       const errorResponse = await prisma.chatMessage.create({
         data: {
-          user_id: session.user.id,
+          user_id: userId,
           role: "assistant",
-          content: "I'm sorry, I couldn't process your message. Please try again.",
+          content:
+            "I'm sorry, I couldn't process your message. Please try again.",
           conversation_id: conversationId,
           metadata: { error: intentResult.error },
         },
@@ -109,13 +138,14 @@ export async function POST(req: Request) {
             },
           ],
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const intent = intentResult.intent;
     let assistantContent = "";
-    let actionTaken: "create_workflow" | "run_workflow" | "general_response" = "general_response";
+    let actionTaken: "create_workflow" | "run_workflow" | "general_response" =
+      "general_response";
     let workflowId: string | undefined = undefined;
 
     // 7. Process message based on intent
@@ -124,16 +154,20 @@ export async function POST(req: Request) {
 
       // Call /api/workflows/generate internally
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-        const generateResponse = await fetch(`${baseUrl}/api/workflows/generate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Forward auth headers if available
-            Cookie: req.headers.get("cookie") || "",
+        const baseUrl =
+          process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+        const generateResponse = await fetch(
+          `${baseUrl}/api/workflows/generate`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              // Forward auth headers if available
+              Cookie: req.headers.get("cookie") || "",
+            },
+            body: JSON.stringify({ intent: message }),
           },
-          body: JSON.stringify({ intent: message }),
-        });
+        );
 
         const generateData = await generateResponse.json();
 
@@ -148,27 +182,36 @@ export async function POST(req: Request) {
           assistantContent = `I tried to create a workflow, but encountered an error: ${generateData.error || "Unknown error"}`;
         }
       } catch (error: any) {
+        logError("app/api/chat (workflow creation)", error, {
+          user_id: userId,
+          intent: "create_workflow",
+        });
         assistantContent = `I encountered an error while creating the workflow: ${error.message || "Unknown error"}`;
       }
     } else if (intent === "run_workflow") {
       actionTaken = "run_workflow";
 
       // Extract workflow ID from message (simple pattern matching)
-      const workflowIdMatch = message.match(/workflow\s+([a-f0-9-]{36})/i) || 
-                              message.match(/id\s+([a-f0-9-]{36})/i);
+      const workflowIdMatch =
+        message.match(/workflow\s+([a-f0-9-]{36})/i) ||
+        message.match(/id\s+([a-f0-9-]{36})/i);
 
       if (workflowIdMatch) {
         workflowId = workflowIdMatch[1];
 
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-          const runResponse = await fetch(`${baseUrl}/api/workflows/${workflowId}/run`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Cookie: req.headers.get("cookie") || "",
+          const baseUrl =
+            process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+          const runResponse = await fetch(
+            `${baseUrl}/api/workflows/${workflowId}/run`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Cookie: req.headers.get("cookie") || "",
+              },
             },
-          });
+          );
 
           const runData = await runResponse.json();
 
@@ -178,14 +221,21 @@ export async function POST(req: Request) {
             assistantContent = `I tried to run the workflow, but encountered an error: ${runData.error || "Unknown error"}`;
           }
         } catch (error: any) {
+          logError("app/api/chat (workflow execution)", error, {
+            user_id: userId,
+            workflow_id: workflowId,
+            intent: "run_workflow",
+          });
           assistantContent = `I encountered an error while running the workflow: ${error.message || "Unknown error"}`;
         }
       } else {
-        assistantContent = "I understand you want to run a workflow, but I couldn't find a workflow ID in your message. Please provide the workflow ID.";
+        assistantContent =
+          "I understand you want to run a workflow, but I couldn't find a workflow ID in your message. Please provide the workflow ID.";
       }
     } else if (intent === "update_workflow") {
       // TODO: Implement update_workflow action
-      assistantContent = "Workflow updates are not yet implemented. This feature is coming soon.";
+      assistantContent =
+        "Workflow updates are not yet implemented. This feature is coming soon.";
     } else {
       // general_response
       actionTaken = "general_response";
@@ -196,14 +246,15 @@ export async function POST(req: Request) {
       if (generalResponseResult.ok && generalResponseResult.response) {
         assistantContent = generalResponseResult.response;
       } else {
-        assistantContent = "I'm here to help you with workflow automation. You can ask me to create workflows, run them, or ask general questions.";
+        assistantContent =
+          "I'm here to help you with workflow automation. You can ask me to create workflows, run them, or ask general questions.";
       }
     }
 
     // 8. Save assistant response to chat_messages
     const assistantMessage = await prisma.chatMessage.create({
       data: {
-        user_id: session.user.id,
+        user_id: userId,
         role: "assistant",
         content: assistantContent,
         conversation_id: conversationId,
@@ -240,16 +291,16 @@ export async function POST(req: Request) {
         action_taken: actionTaken,
         workflow_id: workflowId,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: any) {
-    console.error("CHAT API ERROR:", error);
+    logError("app/api/chat", error);
     return NextResponse.json(
       {
         ok: false,
         error: error.message || "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -257,7 +308,9 @@ export async function POST(req: Request) {
 /**
  * Generate a general AI response for chat
  */
-async function generateGeneralResponse(message: string): Promise<{ ok: boolean; response?: string; error?: string }> {
+async function generateGeneralResponse(
+  message: string,
+): Promise<{ ok: boolean; response?: string; error?: string }> {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -270,28 +323,32 @@ async function generateGeneralResponse(message: string): Promise<{ ok: boolean; 
 
   try {
     if (OPENAI_API_KEY) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+              },
+              {
+                role: "user",
+                content: message,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 200,
+          }),
         },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
-            },
-            {
-              role: "user",
-              content: message,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 200,
-        }),
-      });
+      );
 
       if (!response.ok) {
         return { ok: false, error: "Failed to generate response" };
@@ -300,7 +357,9 @@ async function generateGeneralResponse(message: string): Promise<{ ok: boolean; 
       const data = await response.json();
       return {
         ok: true,
-        response: data.choices?.[0]?.message?.content || "I'm here to help with workflow automation.",
+        response:
+          data.choices?.[0]?.message?.content ||
+          "I'm here to help with workflow automation.",
       };
     } else if (ANTHROPIC_API_KEY) {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -313,7 +372,8 @@ async function generateGeneralResponse(message: string): Promise<{ ok: boolean; 
         body: JSON.stringify({
           model: "claude-3-5-sonnet-20241022",
           max_tokens: 200,
-          system: "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+          system:
+            "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
           messages: [
             {
               role: "user",
@@ -330,11 +390,13 @@ async function generateGeneralResponse(message: string): Promise<{ ok: boolean; 
       const data = await response.json();
       return {
         ok: true,
-        response: data.content?.[0]?.text || "I'm here to help with workflow automation.",
+        response:
+          data.content?.[0]?.text ||
+          "I'm here to help with workflow automation.",
       };
     }
   } catch (error: any) {
-    console.error("Error generating general response:", error);
+    logError("app/api/chat (generateGeneralResponse)", error);
     return {
       ok: false,
       error: error.message || "Failed to generate response",

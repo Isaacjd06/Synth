@@ -1,18 +1,36 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
-
+/**
+ * GET /api/workflows/list
+ * 
+ * List all workflows for the authenticated user.
+ * Unpaid users can view workflows but not modify them.
+ */
 export async function GET() {
   try {
+    const authResult = await authenticateUser();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401
+    }
+    const { userId } = authResult;
+
     const workflows = await prisma.workflows.findMany({
-      where: { user_id: SYSTEM_USER_ID },
+      where: { user_id: userId },
       orderBy: { created_at: "desc" },
     });
 
-    return NextResponse.json(workflows, { status: 200 });
+    // Return workflows with readOnly flag if user doesn't have full access
+    return NextResponse.json(
+      workflows.map((w) => ({
+        ...w,
+        readOnly: !authResult.hasValidSubscription,
+      })),
+      { status: 200 }
+    );
 
   } catch (error: any) {
     console.error("WORKFLOW LIST ERROR:", error);

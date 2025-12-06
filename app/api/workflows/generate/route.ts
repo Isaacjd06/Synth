@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { generateWorkflowBlueprint } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
 import { createWorkflow, PipedreamError } from "@/lib/pipedream";
 import { z } from "zod";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const GenerateRequestSchema = z.object({
   intent: z.string().min(1, "Intent is required"),
@@ -13,36 +11,24 @@ const GenerateRequestSchema = z.object({
 
 /**
  * POST /api/workflows/generate
- * 
+ *
  * Generates a workflow blueprint from natural language intent using AI
  * and stores it in the database.
- * 
+ *
  * Requirements:
  * - User must be authenticated
- * - User must be the admin user (SYSTEM_USER_ID)
  * - Request body must contain { intent: string }
- * 
+ *
  * Returns the created workflow object with ID and blueprint.
  */
 export async function POST(req: Request) {
   try {
-    // 1. Authenticate user
-    const session = await auth();
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    // 1. Authenticate user and check subscription
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
     }
-
-    // 2. Validate admin user
-    if (session.user.id !== SYSTEM_USER_ID) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: Admin access required" },
-        { status: 403 }
-      );
-    }
+    const { userId } = authResult;
 
     // 3. Parse and validate request body
     const body = await req.json();
@@ -76,7 +62,7 @@ export async function POST(req: Request) {
     // 5. Store workflow blueprint in database
     const workflow = await prisma.workflows.create({
       data: {
-        user_id: session.user.id,
+        user_id: userId,
         name: blueprint.name,
         description: blueprint.description || null,
         intent: intent,

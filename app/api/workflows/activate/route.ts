@@ -1,22 +1,28 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { deployWorkflow } from "@/lib/pipedream/deployWorkflow";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: Request) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const { id } = await req.json();
 
     if (!id) {
       return NextResponse.json(
         { error: "Workflow ID is required." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -24,14 +30,14 @@ export async function POST(req: Request) {
     const workflow = await prisma.workflows.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
       },
     });
 
     if (!workflow) {
       return NextResponse.json(
         { error: "Workflow not found." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -42,7 +48,7 @@ export async function POST(req: Request) {
           error:
             "This workflow does not have trigger/actions defined yet and cannot be activated.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -64,21 +70,21 @@ export async function POST(req: Request) {
           error: "Workflow validation failed.",
           details: validation.details || validation.error,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const plan = validation.plan;
 
     // Validate app connections before activating workflow
-    const connectionValidation = await validateAppConnections(plan, SYSTEM_USER_ID);
+    const connectionValidation = await validateAppConnections(plan, userId);
     if (!connectionValidation.ok) {
       return NextResponse.json(
         {
           error: "Cannot activate workflow: " + connectionValidation.error,
           missingApps: connectionValidation.missingApps,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -91,7 +97,7 @@ export async function POST(req: Request) {
           error: "Failed to deploy workflow to Pipedream.",
           details: deploy.details || deploy.error,
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -108,19 +114,26 @@ export async function POST(req: Request) {
       },
     });
 
+    // Log audit event
+    await logAudit("workflow.activate", userId, {
+      workflow_id: id,
+      workflow_name: workflow.name,
+      pipedream_workflow_id: pipedreamWorkflowId,
+    });
+
     return NextResponse.json(
       {
         success: true,
         message: "Workflow activated successfully.",
         workflow_id: pipedreamWorkflowId,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: any) {
     console.error("WORKFLOW ACTIVATE ERROR:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

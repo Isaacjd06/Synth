@@ -1,15 +1,20 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
 import { templates } from "@/lib/workflow/templates";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
-
 export async function POST(req: Request) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body = await req.json();
 
     const { templateId, inputs, name, description } = body;
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
     // 6. Save the workflow into Neon DB
     const created = await prisma.workflows.create({
       data: {
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
         name,
         description: description || template.name,
         intent: validPlan.intent || "",

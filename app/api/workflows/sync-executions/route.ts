@@ -11,7 +11,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateAndCheckSubscription } from '@/lib/auth-helpers';
 import { prisma } from '@/lib/prisma';
+import { logError } from '@/lib/error-logger';
 
 // Minimal type for n8n execution response
 type N8NExecution = {
@@ -39,8 +41,15 @@ export async function GET(request: NextRequest) {
     { status: 410 } // 410 Gone - indicates the resource is no longer available
   );
 
-  /* DEPRECATED CODE - Kept for reference
+  /* DEPRECATED CODE - Kept for reference (cleaned up with proper authentication)
   try {
+    // 1. Authenticate user and check subscription
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const N8N_URL = process.env.N8N_URL || 'http://127.0.0.1:5678';
     const N8N_API_KEY = process.env.N8N_API_KEY;
 
@@ -89,6 +98,7 @@ export async function GET(request: NextRequest) {
     const existing = await prisma.execution.findMany({
       where: {
         pipedream_execution_id: { not: null },
+        user_id: userId, // Only check user's executions
       },
       select: {
         pipedream_execution_id: true,
@@ -101,13 +111,16 @@ export async function GET(request: NextRequest) {
 
     // Get workflow mappings (n8n_workflow_id -> id)
     // NOTE: n8n_workflow_id field temporarily stores Pipedream IDs during MVP
+    // Only get workflows belonging to the authenticated user
     const workflows = await prisma.workflows.findMany({
       where: {
         n8n_workflow_id: { not: null },
+        user_id: userId, // Only sync workflows owned by authenticated user
       },
       select: {
         id: true,
         n8n_workflow_id: true,
+        user_id: true,
       },
     });
 
@@ -118,7 +131,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    console.log(`🧩 Mapped ${workflowMap.size} workflows`);
+    console.log(`🧩 Mapped ${workflowMap.size} workflows for user ${userId}`);
 
     // Process executions
     const toInsert = [];
@@ -131,9 +144,16 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Skip if workflow not found
+      // Skip if workflow not found or not owned by user
       const workflowId = workflowMap.get(exec.workflowId);
       if (!workflowId) {
+        skippedCount++;
+        continue;
+      }
+
+      // Verify workflow ownership one more time (defense in depth)
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow || workflow.user_id !== userId) {
         skippedCount++;
         continue;
       }
@@ -154,7 +174,7 @@ export async function GET(request: NextRequest) {
 
       toInsert.push({
         workflow_id: workflowId,
-        user_id: "00000000-0000-0000-0000-000000000000", // SYSTEM_USER_ID
+        user_id: userId, // Use authenticated user ID, not SYSTEM_USER_ID
         input_data: inputData,
         output_data: outputData,
         status: status,
@@ -175,7 +195,10 @@ export async function GET(request: NextRequest) {
         });
         insertedCount = result.count;
       } catch (insertError: any) {
-        console.error('❌ Insert error:', insertError);
+        logError('app/api/workflows/sync-executions (insert)', insertError, {
+          user_id: userId,
+          toInsertCount: toInsert.length,
+        });
         return NextResponse.json(
           { error: 'Failed to insert executions', details: insertError.message },
           { status: 500 }
@@ -183,7 +206,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`🧩 Inserted ${insertedCount}, skipped ${skippedCount}`);
+    console.log(`🧩 Inserted ${insertedCount}, skipped ${skippedCount} for user ${userId}`);
     console.log('🏁 Sync complete');
 
     return NextResponse.json({
@@ -192,8 +215,8 @@ export async function GET(request: NextRequest) {
       inserted: insertedCount,
       skipped: skippedCount,
     });
-  } catch (error) {
-    console.error('❌ Unexpected error:', error);
+  } catch (error: any) {
+    logError('app/api/workflows/sync-executions', error);
     return NextResponse.json(
       {
         error: 'Internal server error',

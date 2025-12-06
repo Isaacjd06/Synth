@@ -21,6 +21,20 @@ model User {
 
   created_at          DateTime             @default(now())
 
+  // Stripe subscription fields
+  stripeCustomerId         String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId     String?   @map("stripe_subscription_id")
+  plan                     String?   @map("subscription_plan")
+  subscriptionStatus       String?   @default("inactive") @map("subscription_status")
+  subscriptionRenewalAt    DateTime? @map("subscription_renewal_at")
+  addOns                   String[]  @default([]) @map("subscription_add_ons")
+  
+  // Additional Stripe fields
+  subscriptionStartedAt  DateTime? @map("subscription_started_at")
+  subscriptionEndsAt     DateTime? @map("subscription_ends_at")
+  trialEndsAt            DateTime? @map("trial_ends_at")
+  stripePaymentMethodId String? @map("stripe_payment_method_id")   // Last used payment method for easier updates
+
   chatMessages        ChatMessage[]
   connections         Connection[]
   executions          Execution[]
@@ -37,27 +51,36 @@ model User {
   memoryRoadmaps      MemoryRoadmap[]
   accounts            Account[]
   sessions            Session[]
+  usageLogs           UsageLog[]
+  apiKeys             ApiKey[]
+  auditLogs           AuditLog[]
+  purchaseLogs        PurchaseLog[]
+  subscriptionCancelReasons SubscriptionCancelReason[]
+  advisoryInsights    AdvisoryInsight[]
 }
 
 model Workflows {
-  id                String             @id @default(uuid())
-  user_id           String
-  name              String
-  description       String?
-  intent            String?
-  trigger           Json?
-  actions           Json?
-  active            Boolean            @default(true)
-  n8n_workflow_id   String? // TEMPORARY MVP: Stores Pipedream workflow ID during MVP phase.
+  id                  String             @id @default(uuid())
+  user_id             String
+  name                String
+  description         String?
+  intent              String?
+  trigger             Json?
+  actions             Json?
+  active              Boolean            @default(false) // Default to false - workflows must be explicitly activated
+  n8n_workflow_id     String? // TEMPORARY MVP: Stores Pipedream workflow ID during MVP phase.
   // This field will be renamed to "executor_workflow_id" in a future migration.
   // For MVP, Synth uses ONLY Pipedream as execution engine.
   // See: knowledge/architecture/pipedream-logic.md
-  created_at        DateTime           @default(now())
-  updated_at        DateTime           @updatedAt
-  executions        Execution[]
-  memoryAutomations MemoryAutomation[]
-  user              User               @relation(fields: [user_id], references: [id])
+  pipedream_deployment_state String? // "deployed", "pending", "failed"
+  last_deployed_at    DateTime?
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+  executions          Execution[]
+  memoryAutomations   MemoryAutomation[]
+  user                User               @relation(fields: [user_id], references: [id])
 
+  @@index([user_id, active])
   @@map("workflows")
 }
 
@@ -67,24 +90,35 @@ model Execution {
   user_id                String
   input_data             Json?
   output_data            Json?
-  status                 String?   @default("unknown") // "success" | "failure" | "running" | "unknown"
-  pipedream_execution_id String? // External execution ID from Pipedream
+  status                 String    @default("unknown") // "success" | "failure" | "running" | "unknown"
+  pipedream_execution_id String? @unique // External execution ID from Pipedream
+  error_message          String? // Error details if status is "failure"
+  execution_time_ms      Int? // Execution duration in milliseconds
   created_at             DateTime  @default(now())
+  started_at             DateTime?
   finished_at            DateTime?
   user                   User      @relation(fields: [user_id], references: [id])
   workflow               Workflows @relation(fields: [workflow_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([workflow_id, created_at])
+  @@index([status, created_at])
+  @@map("executions")
 }
 
 model Connection {
-  id              String    @id @default(uuid())
-  user_id         String
-  service_name    String // e.g., "Gmail", "Slack"
-  status          String    @default("active") // "active" | "inactive"
-  connection_type String? // "OAuth" | "APIKey" | null
-  created_at      DateTime  @default(now())
-  last_verified   DateTime?
+  id                    String    @id @default(uuid())
+  user_id               String
+  service_name          String // e.g., "Gmail", "Slack"
+  status                String    @default("active") // "active" | "inactive"
+  connection_type       String? // "OAuth" | "APIKey" | null
+  pipedream_source_id   String? // Pipedream source ID for this connection
+  pipedream_auth_id     String? // Pipedream auth ID/reference
+  metadata              Json? // Additional connection metadata
+  created_at            DateTime  @default(now())
+  last_verified         DateTime?
   // REMOVED: credentials  Json?  // SECURITY: Secrets are NOT stored here. They are stored in secure storage system.
-  user            User      @relation(fields: [user_id], references: [id])
+  user                  User      @relation(fields: [user_id], references: [id])
 
   @@map("connections")
 }
@@ -141,12 +175,17 @@ model Knowledge {
   id         String   @id @default(uuid())
   user_id    String
   title      String
+  type       String   @default("text") // "text", "markdown", "url", "file", "structured_doc"
   content    String? // Used if the user pastes text
   file_url   String? // Used if the user uploads a file
   file_type  String? // pdf, txt, md, docx, etc.
+  metadata   Json? // Additional metadata (tags, file info, etc.)
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   user User @relation(fields: [user_id], references: [id])
+
+  @@map("knowledge")
 }
 
 model MemoryActionsTaken {
@@ -268,7 +307,134 @@ model VerificationToken {
 model Waitlist {
   id        String   @id @default(uuid())
   email     String   @unique
-  createdAt DateTime  @default(now())
+  name      String?
+  source    String?  @default("landing_page") // "landing_page", "manual_import", etc.
+  status    String   @default("waiting") // "waiting", "invited", "converted"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("waitlist")
+}
+
+model StripeEvent {
+  id               String   @id @default(uuid())
+  stripe_event_id  String   @unique
+  type             String
+  data             Json
+  processed        Boolean  @default(false)
+  created_at       DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+model UsageLog {
+  id         String   @id @default(uuid())
+  user_id    String
+  event      String
+  amount     Int      @default(1)
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([event, created_at])
+  @@map("usage_logs")
+}
+
+model ApiKey {
+  id           String    @id @default(uuid())
+  user_id      String
+  name         String    // User-friendly name for the key
+  key_hash     String    // hashed API key
+  key_prefix   String    // First 8 chars for identification (e.g., "sk_live_")
+  scopes       String[]  @default([]) // Permissions array
+  last_used_at DateTime?
+  expires_at   DateTime?
+  revoked      Boolean   @default(false)
+  created_at   DateTime  @default(now())
+  user         User      @relation(fields: [user_id], references: [id])
+
+  @@index([key_prefix])
+  @@index([user_id])
+  @@map("api_keys")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  user_id       String?
+  action        String
+  resource_type String? // e.g., "workflow", "user", "subscription"
+  resource_id   String? // ID of the resource
+  ip_address    String?
+  user_agent    String?
+  metadata      Json?
+  created_at    DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([action, created_at])
+  @@index([resource_type, resource_id])
+  @@map("audit_logs")
+}
+
+// Add-on purchase history
+model PurchaseLog {
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  addonId               String   @map("addon_id")
+  stripePaymentIntentId String?  @map("stripe_payment_intent_id")
+  amount                Int?     // Amount in cents
+  currency              String?  @default("usd")
+  status                String   @default("succeeded") // "succeeded" | "failed" | "pending"
+  createdAt             DateTime @default(now()) @map("created_at")
+  user                  User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([addonId])
+  @@map("purchase_logs")
+}
+
+// Subscription cancellation reasons
+model SubscriptionCancelReason {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  reason    String   // User-provided reason text
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("subscription_cancel_reasons")
+}
+
+// Advisory insights for Synth Advisory panel
+model AdvisoryInsight {
+  id          String   @id @default(uuid())
+  user_id     String   @map("user_id")
+  source_type String   @map("source_type") // "execution_stats", "knowledge", "behavior", "workflow_pattern"
+  title       String
+  body        String   // Text content of the advisory insight
+  priority    String?  @default("medium") // "high", "medium", "low"
+  category    String? // "growth", "efficiency", "reliability", "optimization"
+  metadata    Json? // Additional context data
+  created_at  DateTime @default(now()) @map("created_at")
+  user        User     @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@index([source_type, created_at])
+  @@map("advisory_insights")
+}
+
+// Webhook event log for idempotency
+model WebhookEventLog {
+  id               String   @id @default(uuid())
+  stripeEventId    String   @unique @map("stripe_event_id")
+  eventType        String   @map("event_type")
+  processed        Boolean  @default(false)
+  processedAt      DateTime? @map("processed_at")
+  errorMessage     String?  @map("error_message")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([stripeEventId])
+  @@index([eventType, processed])
+  @@map("webhook_event_logs")
 }

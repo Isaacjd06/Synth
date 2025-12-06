@@ -1,12 +1,17 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function POST(req: Request) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const { id } = await req.json();
 
     if (!id) {
@@ -20,7 +25,7 @@ export async function POST(req: Request) {
     const existing = await prisma.memory.findFirst({
       where: {
         id,
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
       },
     });
 

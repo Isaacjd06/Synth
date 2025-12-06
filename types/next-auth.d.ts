@@ -13,6 +13,16 @@ declare module "next-auth" {
       email_verified?: boolean | null;
       provider?: string | null;
       last_login_at?: Date | null;
+      // Stripe subscription fields (camelCase to match Prisma schema)
+      stripeCustomerId?: string | null;
+      stripeSubscriptionId?: string | null;
+      subscriptionStatus?: string | null;
+      plan?: string | null;
+      subscriptionStartedAt?: Date | null;
+      subscriptionEndsAt?: Date | null;
+      trialEndsAt?: Date | null;
+      addOns?: any | null;
+      stripePaymentMethodId?: string | null;
     };
   }
 
@@ -25,6 +35,16 @@ declare module "next-auth" {
     email_verified?: boolean | null;
     provider?: string | null;
     last_login_at?: Date | null;
+    // Stripe subscription fields (Prisma field names)
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    subscriptionStatus?: string | null;
+    plan?: string | null;
+    subscriptionStartedAt?: Date | null;
+    subscriptionEndsAt?: Date | null;
+    trialEndsAt?: Date | null;
+    addOns?: any | null;
+    stripePaymentMethodId?: string | null;
   }
 }
 

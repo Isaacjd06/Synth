@@ -1,16 +1,31 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateWithAccessInfo } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function GET() {
   try {
+    const authResult = await authenticateWithAccessInfo();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401
+    }
+    const { userId, accessInfo } = authResult;
+
+    // Build where clause based on access level
+    let whereClause: any = {
+      user_id: userId,
+    };
+
+    // If user doesn't have full access, only show executions from trial period
+    if (!accessInfo.hasFullAccess && accessInfo.trialEndsAt) {
+      whereClause.created_at = {
+        lte: accessInfo.trialEndsAt,
+      };
+    }
+
     const data = await prisma.execution.findMany({
-      where: {
-        user_id: SYSTEM_USER_ID, // Security scope check
-      },
+      where: whereClause,
       orderBy: { created_at: "desc" },
     });
 

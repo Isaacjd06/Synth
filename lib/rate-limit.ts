@@ -1,7 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
-import type { Request } from "next/server";
 import { auth } from "@/lib/auth";
 
 // Initialize Upstash Redis client
@@ -86,7 +85,7 @@ function getClientIP(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     // x-forwarded-for can contain multiple IPs, take the first one
-    const ips = forwarded.split(",").map((ip) => ip.trim());
+    const ips = forwarded.split(",").map((ip: string) => ip.trim());
     return ips[0] || "unknown";
   }
 

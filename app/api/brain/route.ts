@@ -1,9 +1,8 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 // Later you will swap this with the Claude API call
 async function askClaude(prompt: string) {
@@ -15,6 +14,12 @@ async function askClaude(prompt: string) {
 
 export async function POST(req: Request) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body = await req.json();
     const { message } = body;
 
@@ -27,7 +32,7 @@ export async function POST(req: Request) {
 
     // 1. Load relevant memory for this user
     const memories = await prisma.memory.findMany({
-      where: { user_id: SYSTEM_USER_ID },
+      where: { user_id: userId },
       orderBy: { created_at: "desc" },
     });
 

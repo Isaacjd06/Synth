@@ -1,14 +1,19 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function GET() {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const memories = await prisma.memory.findMany({
-      where: { user_id: SYSTEM_USER_ID },
+      where: { user_id: userId },
       orderBy: { created_at: "desc" },
     });
 

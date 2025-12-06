@@ -15,13 +15,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateAndCheckSubscription } from '@/lib/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import { runWorkflow } from '@/lib/pipedream/runWorkflow';
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
-
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await authenticateAndCheckSubscription();
+    if (authResult instanceof NextResponse) {
+      return authResult; // Returns 401 or 403
+    }
+    const { userId } = authResult;
+
     const body = await request.json();
 
     // Validate required fields
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
     const workflow = await prisma.workflows.findFirst({
       where: {
         id: body.workflow_id,
-        user_id: SYSTEM_USER_ID,
+        user_id: userId,
       },
       select: {
         id: true,
@@ -76,7 +81,7 @@ export async function POST(request: NextRequest) {
       await prisma.execution.create({
         data: {
           workflow_id: workflow.id,
-          user_id: workflow.user_id,
+          user_id: userId,
           input_data: body.input || {},
           output_data: {
             error: runResult.error,
@@ -107,7 +112,7 @@ export async function POST(request: NextRequest) {
       savedExecution = await prisma.execution.create({
         data: {
           workflow_id: workflow.id,
-          user_id: workflow.user_id,
+          user_id: userId,
           input_data: body.input || {},
           output_data: execution.data?.output || null,
           status: executionStatus,

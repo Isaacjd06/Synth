@@ -4,19 +4,15 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import ExecutionsTable from "@/components/executions/ExecutionsTable";
 import ExecutionsHeader from "@/components/executions/ExecutionsHeader";
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+import SubscriptionGate from "@/components/subscription/SubscriptionGate";
+import SubscriptionInactiveBanner from "@/components/subscription/SubscriptionInactiveBanner";
 
 export default async function ExecutionsPage() {
-  // Authenticate and validate admin user
+  // Authenticate user
   const session = await auth();
 
   if (!session || !session.user) {
     redirect("/api/auth/signin");
-  }
-
-  if (session.user.id !== SYSTEM_USER_ID) {
-    redirect("/");
   }
 
   // Fetch recent executions with workflow join
@@ -64,29 +60,32 @@ export default async function ExecutionsPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Executions</h1>
-        <p className="text-gray-400">
-          View execution history across all your workflows.
-        </p>
-      </div>
+      <SubscriptionGate>
+        <SubscriptionInactiveBanner />
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white mb-2">Executions</h1>
+          <p className="text-gray-400">
+            View execution history across all your workflows.
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Execution History</CardTitle>
-              <CardDescription>
-                Most recent workflow executions across your Synth account.
-              </CardDescription>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Execution History</CardTitle>
+                <CardDescription>
+                  Most recent workflow executions across your Synth account.
+                </CardDescription>
+              </div>
+              <ExecutionsHeader />
             </div>
-            <ExecutionsHeader />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ExecutionsTable executions={executions} error={error} />
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <ExecutionsTable executions={executions} error={error} />
+          </CardContent>
+        </Card>
+      </SubscriptionGate>
     </div>
   );
 }
