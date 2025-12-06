@@ -8,7 +8,8 @@ import {
   PlusCircle, 
   PlaySquare, 
   BookOpen,
-  MessageSquare
+  MessageSquare,
+  Settings
 } from "lucide-react";
 import { useState } from "react";
 
@@ -16,9 +17,8 @@ const navigationItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Chat", href: "/chat", icon: MessageSquare },
   { label: "Workflows", href: "/workflows", icon: Workflow },
-  { label: "Create Workflow", href: "/workflows/create", icon: PlusCircle },
   { label: "Executions", href: "/executions", icon: PlaySquare },
-  { label: "Knowledgebase", href: "/knowledgebase", icon: BookOpen, placeholder: true },
+  { label: "Settings", href: "/settings/connections", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -26,7 +26,7 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const isActive = (href: string) => {
-    // Exact matches first (for specific routes like /workflows/create)
+    // Exact matches first
     if (pathname === href) {
       return true;
     }
@@ -36,6 +36,11 @@ export default function Sidebar() {
     if (href === "/workflows") {
       return pathname === "/workflows" || 
         (pathname?.startsWith("/workflows/") && pathname !== "/workflows/create");
+    }
+    
+    // Special handling for /settings - should highlight on any /settings/* route
+    if (href === "/settings/connections") {
+      return pathname?.startsWith("/settings/");
     }
     
     // All other routes use exact match only
@@ -86,11 +91,8 @@ export default function Sidebar() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    onClick={(e) => {
+                    onClick={() => {
                       setIsMobileOpen(false);
-                      if (item.placeholder) {
-                        e.preventDefault();
-                      }
                     }}
                     className={`
                       flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all
@@ -100,7 +102,6 @@ export default function Sidebar() {
                           ? "bg-[#194c92] text-white shadow-lg shadow-[#194c92]/20"
                           : "text-gray-300 hover:bg-gray-800 hover:text-white"
                       }
-                      ${item.placeholder ? "opacity-60 cursor-not-allowed" : ""}
                     `}
                   >
                     <Icon 
@@ -110,9 +111,6 @@ export default function Sidebar() {
                       `} 
                     />
                     <span className="flex-1">{item.label}</span>
-                    {item.placeholder && (
-                      <span className="text-xs text-gray-500">Soon</span>
-                    )}
                   </Link>
                 </li>
               );

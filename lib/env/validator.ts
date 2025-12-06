@@ -12,18 +12,38 @@ interface EnvVar {
 
 const REQUIRED_ENV_VARS: EnvVar[] = [
   {
-    name: 'PIPEDREAM_API_KEY',
-    required: true,
-    description: 'Pipedream API key for workflow execution',
-  },
-  {
     name: 'DATABASE_URL',
     required: true,
     description: 'Neon PostgreSQL database connection string',
   },
+  {
+    name: 'AUTH_SECRET',
+    required: true,
+    description: 'NextAuth secret for session encryption (generate with: openssl rand -base64 32)',
+  },
+  {
+    name: 'GOOGLE_CLIENT_ID',
+    required: true,
+    description: 'Google OAuth client ID from Google Cloud Console',
+  },
+  {
+    name: 'GOOGLE_CLIENT_SECRET',
+    required: true,
+    description: 'Google OAuth client secret from Google Cloud Console',
+  },
+  {
+    name: 'PIPEDREAM_API_KEY',
+    required: true,
+    description: 'Pipedream API key for workflow execution',
+  },
 ];
 
 const OPTIONAL_ENV_VARS: EnvVar[] = [
+  {
+    name: 'AUTH_URL',
+    required: false,
+    description: 'NextAuth base URL (required in production, e.g., https://yourdomain.com)',
+  },
   {
     name: 'PIPEDREAM_API_URL',
     required: false,

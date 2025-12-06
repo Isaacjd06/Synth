@@ -1,9 +1,23 @@
-export default function Home() {
+import HeroSection from "@/components/marketing/HeroSection";
+import WhatIsSynthSection from "@/components/marketing/WhatIsSynthSection";
+import WhyDifferentSection from "@/components/marketing/WhyDifferentSection";
+import ICPSection from "@/components/marketing/ICPSection";
+import ExampleAutomationsSection from "@/components/marketing/ExampleAutomationsSection";
+import HowItWorksSection from "@/components/marketing/HowItWorksSection";
+import FooterSection from "@/components/marketing/FooterSection";
+import BackgroundEffects from "@/components/marketing/BackgroundEffects";
+
+export default function LandingPage() {
   return (
-    <div className="w-full max-w-full overflow-x-hidden px-4 lg:px-6 py-4 lg:py-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
-      <h1 className="text-3xl font-bold">
-        Welcome to Next.js!
-      </h1>
-    </div>
+    <main className="relative min-h-screen overflow-x-hidden bg-background">
+      <BackgroundEffects />
+      <HeroSection />
+      <WhatIsSynthSection />
+      <WhyDifferentSection />
+      <ICPSection />
+      <ExampleAutomationsSection />
+      <HowItWorksSection />
+      <FooterSection />
+    </main>
   );
 }

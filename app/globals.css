@@ -23,10 +23,24 @@
     --input: 0 0% 15%;
     --ring: 217 91% 30%;
     --radius: 0.5rem;
+
+    /* Synth Intelligence Tokens */
+    --synth-blue: 217 91% 60%;
+    --synth-blue-light: 217 90% 72%;
+    --synth-blue-glow: 217 100% 78%;
+    --synth-navy: 222 55% 2%;
+    --synth-navy-light: 222 48% 5%;
+    --synth-slate: 215 20% 50%;
+    --synth-surface: 222 40% 7%;
+    --synth-surface-light: 222 38% 11%;
   }
 
   * {
     @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   body {
@@ -63,4 +77,93 @@
 .container-safe {
   max-width: 100%;
   overflow-x: hidden;
+}
+
+@layer utilities {
+  /* Typography Utilities */
+  .font-display {
+    font-family: var(--font-plus-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  .font-display-bold {
+    font-family: var(--font-plus-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .font-accent {
+    font-family: var(--font-plus-jakarta), 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* Gradient Text */
+  .text-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-accent {
+    background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.9) 50%, hsl(var(--primary)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    background-size: 200% 100%;
+  }
+
+  .text-gradient-pulse {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary) / 0.9) 30%,
+      hsl(var(--primary) / 0.95) 50%,
+      hsl(var(--primary) / 0.9) 70%,
+      hsl(var(--primary)) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradient-pulse 4s ease-in-out infinite;
+  }
+
+
+
+  /* Grid Patterns */
+  .grid-computation {
+    background-image: 
+      linear-gradient(to right, hsl(217 50% 50% / 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(217 50% 50% / 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .grid-nodes {
+    background-image: radial-gradient(hsl(217 50% 50% / 0.12) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+}
+
+/* Keyframe Animations */
+@keyframes gradient-pulse {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+
+@keyframes thinking-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(217 100% 60% / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px hsl(217 100% 60% / 0.15);
+  }
 }

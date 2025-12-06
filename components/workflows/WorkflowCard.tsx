@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Card from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import WorkflowStatusBadge from "@/components/workflows/WorkflowStatusBadge";
 import { truncate } from "@/lib/utils";
 

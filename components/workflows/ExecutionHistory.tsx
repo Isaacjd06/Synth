@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Card from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatDateTime, formatStatus } from "@/lib/utils";

@@ -1,207 +1,348 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { detectChatIntent } from "@/lib/ai";
+import { z } from "zod";
+import { randomUUID } from "crypto";
 
-// Type definitions
-interface CreateChatMessageBody {
-  user_id: string;
-  conversation_id?: string;
-  role: string;
-  content: string;
-  metadata?: any;
-}
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
-interface UpdateChatMessageBody {
-  id: string;
-  conversation_id?: string;
-  role?: string;
-  content?: string;
-  metadata?: any;
-}
+const ChatRequestSchema = z.object({
+  message: z.string().min(1, "Message is required"),
+  session_id: z.string().optional(), // Optional session ID for continuing conversation
+});
 
-// GET - Fetch all chat messages
-export async function GET(request: NextRequest) {
+/**
+ * POST /api/chat
+ * 
+ * Processes chat messages and takes actions based on intent.
+ * 
+ * Requirements:
+ * - User must be authenticated
+ * - User must be the admin user (SYSTEM_USER_ID)
+ * - Request body must contain { message: string, session_id?: string }
+ * 
+ * Returns chat response with action taken and workflow ID if applicable.
+ */
+export async function POST(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
-    const conversationId = searchParams.get("conversation_id");
+    // 1. Authenticate user
+    const session = await auth();
 
-    // Build where clause for filtering
-    const where: any = {};
-    if (userId) where.user_id = userId;
-    if (conversationId) where.conversation_id = conversationId;
-
-    // Always filter by user_id if provided, otherwise return empty array for safety
-    if (!userId) {
-      console.warn("GET /api/chat: No user_id provided, returning empty array");
-      return NextResponse.json({ success: true, data: [] });
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    const chatMessages = await prisma.chatMessage.findMany({
-      where: where,
-      orderBy: { created_at: "asc" },
-      select: {
-        id: true,
-        user_id: true,
-        role: true,
-        content: true,
-        conversation_id: true,
-        created_at: true,
-        metadata: true,
-      },
-    });
-
-    return NextResponse.json({ success: true, data: chatMessages });
-  } catch (error: any) {
-    console.error("GET /api/chat error:", error);
-    console.error("Error details:", {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name,
-    });
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error?.message || "Failed to fetch chat messages",
-        details: process.env.NODE_ENV === "development" ? error?.stack : undefined
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Create a new chat message
-export async function POST(request: NextRequest) {
-  try {
-    const body: CreateChatMessageBody = await request.json();
-
-    // Validate required fields
-    if (!body.user_id || !body.role || !body.content) {
+    // 2. Validate admin user
+    if (session.user.id !== SYSTEM_USER_ID) {
       return NextResponse.json(
-        { success: false, error: "user_id, role, and content are required" },
+        { ok: false, error: "Forbidden: Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    // 3. Parse and validate request body
+    const body = await req.json();
+    const validationResult = ChatRequestSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Invalid request body",
+          details: validationResult.error.issues,
+        },
         { status: 400 }
       );
     }
 
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: body.user_id },
-    });
+    const { message, session_id } = validationResult.data;
 
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "User not found. Please ensure the user exists in the database." },
-        { status: 404 }
-      );
-    }
+    // 4. Generate or use existing session_id (conversation_id)
+    const conversationId = session_id || randomUUID();
 
-    const chatMessage = await prisma.chatMessage.create({
+    // 5. Save user message to chat_messages table
+    const userMessage = await prisma.chatMessage.create({
       data: {
-        user_id: body.user_id,
-        conversation_id: body.conversation_id || null,
-        role: body.role,
-        content: body.content,
-        metadata: body.metadata || null,
+        user_id: session.user.id,
+        role: "user",
+        content: message,
+        conversation_id: conversationId,
       },
     });
 
-    return NextResponse.json({ success: true, data: chatMessage }, { status: 201 });
-  } catch (error: any) {
-    console.error("POST /api/chat error:", error);
-    console.error("Error details:", {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name,
-    });
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error?.message || "Failed to create chat message",
-        details: process.env.NODE_ENV === "development" ? error?.stack : undefined
-      },
-      { status: 500 }
-    );
-  }
-}
+    // 6. Detect intent using AI
+    const intentResult = await detectChatIntent(message);
 
-// PUT - Update a chat message by id
-export async function PUT(request: NextRequest) {
-  try {
-    const body: UpdateChatMessageBody = await request.json();
+    if (!intentResult.ok) {
+      // If intent detection fails, save error response
+      const errorResponse = await prisma.chatMessage.create({
+        data: {
+          user_id: session.user.id,
+          role: "assistant",
+          content: "I'm sorry, I couldn't process your message. Please try again.",
+          conversation_id: conversationId,
+          metadata: { error: intentResult.error },
+        },
+      });
 
-    if (!body.id) {
       return NextResponse.json(
-        { success: false, error: "Message ID is required" },
-        { status: 400 }
+        {
+          ok: false,
+          error: intentResult.error,
+          session_id: conversationId,
+          messages: [
+            {
+              id: userMessage.id,
+              role: userMessage.role,
+              content: userMessage.content,
+              created_at: userMessage.created_at,
+            },
+            {
+              id: errorResponse.id,
+              role: errorResponse.role,
+              content: errorResponse.content,
+              created_at: errorResponse.created_at,
+            },
+          ],
+        },
+        { status: 500 }
       );
     }
 
-    // Check if message exists
-    const existingMessage = await prisma.chatMessage.findUnique({
-      where: { id: body.id },
-    });
+    const intent = intentResult.intent;
+    let assistantContent = "";
+    let actionTaken: "create_workflow" | "run_workflow" | "general_response" = "general_response";
+    let workflowId: string | undefined = undefined;
 
-    if (!existingMessage) {
-      return NextResponse.json(
-        { success: false, error: "Message not found" },
-        { status: 404 }
-      );
+    // 7. Process message based on intent
+    if (intent === "create_workflow") {
+      actionTaken = "create_workflow";
+
+      // Call /api/workflows/generate internally
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+        const generateResponse = await fetch(`${baseUrl}/api/workflows/generate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Forward auth headers if available
+            Cookie: req.headers.get("cookie") || "",
+          },
+          body: JSON.stringify({ intent: message }),
+        });
+
+        const generateData = await generateResponse.json();
+
+        if (generateData.ok && generateData.workflow) {
+          workflowId = generateData.workflow.id;
+          assistantContent = `I've created a new workflow "${generateData.workflow.name}" for you. The workflow has been generated and saved. Workflow ID: ${workflowId}`;
+        } else {
+          // Capture workflow_id even on partial failure (created in DB but Pipedream failed)
+          if (generateData.workflow?.id) {
+            workflowId = generateData.workflow.id;
+          }
+          assistantContent = `I tried to create a workflow, but encountered an error: ${generateData.error || "Unknown error"}`;
+        }
+      } catch (error: any) {
+        assistantContent = `I encountered an error while creating the workflow: ${error.message || "Unknown error"}`;
+      }
+    } else if (intent === "run_workflow") {
+      actionTaken = "run_workflow";
+
+      // Extract workflow ID from message (simple pattern matching)
+      const workflowIdMatch = message.match(/workflow\s+([a-f0-9-]{36})/i) || 
+                              message.match(/id\s+([a-f0-9-]{36})/i);
+
+      if (workflowIdMatch) {
+        workflowId = workflowIdMatch[1];
+
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+          const runResponse = await fetch(`${baseUrl}/api/workflows/${workflowId}/run`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Cookie: req.headers.get("cookie") || "",
+            },
+          });
+
+          const runData = await runResponse.json();
+
+          if (runData.ok && runData.execution) {
+            assistantContent = `I've executed the workflow. Execution ID: ${runData.execution.id}. Status: ${runData.execution.status}`;
+          } else {
+            assistantContent = `I tried to run the workflow, but encountered an error: ${runData.error || "Unknown error"}`;
+          }
+        } catch (error: any) {
+          assistantContent = `I encountered an error while running the workflow: ${error.message || "Unknown error"}`;
+        }
+      } else {
+        assistantContent = "I understand you want to run a workflow, but I couldn't find a workflow ID in your message. Please provide the workflow ID.";
+      }
+    } else if (intent === "update_workflow") {
+      // TODO: Implement update_workflow action
+      assistantContent = "Workflow updates are not yet implemented. This feature is coming soon.";
+    } else {
+      // general_response
+      actionTaken = "general_response";
+
+      // Generate a general AI response
+      const generalResponseResult = await generateGeneralResponse(message);
+
+      if (generalResponseResult.ok && generalResponseResult.response) {
+        assistantContent = generalResponseResult.response;
+      } else {
+        assistantContent = "I'm here to help you with workflow automation. You can ask me to create workflows, run them, or ask general questions.";
+      }
     }
 
-    const chatMessage = await prisma.chatMessage.update({
-      where: { id: body.id },
+    // 8. Save assistant response to chat_messages
+    const assistantMessage = await prisma.chatMessage.create({
       data: {
-        conversation_id: body.conversation_id,
-        role: body.role,
-        content: body.content,
-        metadata: body.metadata,
+        user_id: session.user.id,
+        role: "assistant",
+        content: assistantContent,
+        conversation_id: conversationId,
+        metadata: {
+          intent,
+          action_taken: actionTaken,
+          workflow_id: workflowId,
+        },
       },
     });
 
-    return NextResponse.json({ success: true, data: chatMessage });
-  } catch (error) {
-    console.error("PUT /api/chat error:", error);
+    // 9. Fetch all messages in this conversation
+    const conversationMessages = await prisma.chatMessage.findMany({
+      where: {
+        conversation_id: conversationId,
+      },
+      orderBy: {
+        created_at: "asc",
+      },
+    });
+
+    // 10. Return response
     return NextResponse.json(
-      { success: false, error: "Failed to update chat message" },
+      {
+        ok: true,
+        session_id: conversationId,
+        messages: conversationMessages.map((msg) => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          created_at: msg.created_at,
+          metadata: msg.metadata,
+        })),
+        action_taken: actionTaken,
+        workflow_id: workflowId,
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("CHAT API ERROR:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error.message || "Internal server error",
+      },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Delete a chat message by id
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+/**
+ * Generate a general AI response for chat
+ */
+async function generateGeneralResponse(message: string): Promise<{ ok: boolean; response?: string; error?: string }> {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: "Message ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // Check if message exists
-    const existingMessage = await prisma.chatMessage.findUnique({
-      where: { id },
-    });
-
-    if (!existingMessage) {
-      return NextResponse.json(
-        { success: false, error: "Message not found" },
-        { status: 404 }
-      );
-    }
-
-    await prisma.chatMessage.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ success: true, data: { id } });
-  } catch (error) {
-    console.error("DELETE /api/chat error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to delete chat message" },
-      { status: 500 }
-    );
+  if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
+    return {
+      ok: false,
+      error: "No AI API key configured",
+    };
   }
+
+  try {
+    if (OPENAI_API_KEY) {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+            },
+            {
+              role: "user",
+              content: message,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 200,
+        }),
+      });
+
+      if (!response.ok) {
+        return { ok: false, error: "Failed to generate response" };
+      }
+
+      const data = await response.json();
+      return {
+        ok: true,
+        response: data.choices?.[0]?.message?.content || "I'm here to help with workflow automation.",
+      };
+    } else if (ANTHROPIC_API_KEY) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20241022",
+          max_tokens: 200,
+          system: "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+          messages: [
+            {
+              role: "user",
+              content: message,
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        return { ok: false, error: "Failed to generate response" };
+      }
+
+      const data = await response.json();
+      return {
+        ok: true,
+        response: data.content?.[0]?.text || "I'm here to help with workflow automation.",
+      };
+    }
+  } catch (error: any) {
+    console.error("Error generating general response:", error);
+    return {
+      ok: false,
+      error: error.message || "Failed to generate response",
+    };
+  }
+
+  return {
+    ok: false,
+    error: "No AI provider available",
+  };
 }

@@ -38,7 +38,8 @@
       "Bash(dir:*)",
       "Bash(if not exist \"prisma\\migrations\" mkdir \"prisma\\migrations\")",
       "Bash(del appapibrainupdateroute.ts 2)",
-      "Bash(if not exist \"lib\\knowledge\\strategy\\gtm\" mkdir \"lib\\knowledge\\strategy\\gtm\")"
+      "Bash(if not exist \"lib\\knowledge\\strategy\\gtm\" mkdir \"lib\\knowledge\\strategy\\gtm\")",
+      "Bash(if exist .env.example type .env.example)"
     ],
     "deny": [],
     "ask": []

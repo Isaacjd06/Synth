@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import Card from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Link from "next/link";
 import { formatDate, formatStatus, truncate } from "@/lib/utils";

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import Button from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 
 interface RunWorkflowButtonProps {
   workflowId: string;
@@ -57,12 +57,11 @@ export default function RunWorkflowButton({ workflowId }: RunWorkflowButtonProps
 
   return (
     <Button
-      variant="primary"
+      variant="default"
       onClick={handleRun}
-      loading={loading}
       disabled={loading}
     >
-      Run Workflow
+      {loading ? "Running..." : "Run Workflow"}
     </Button>
   );
 }

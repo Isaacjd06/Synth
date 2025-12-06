@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
-import Button from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Send } from "lucide-react";
 
 interface ChatComposerProps {
@@ -79,7 +79,6 @@ export default function ChatComposer({
         <Button
           onClick={handleSubmit}
           disabled={disabled || isLoading || !message.trim()}
-          loading={isLoading}
           className="flex-shrink-0 h-[52px] px-6"
         >
           <Send className="w-4 h-4" />

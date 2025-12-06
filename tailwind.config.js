@@ -5,6 +5,13 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
     extend: {
       colors: {
         border: "hsl(var(--border))",
@@ -38,6 +45,16 @@ module.exports = {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
+        synth: {
+          blue: "hsl(var(--synth-blue))",
+          "blue-light": "hsl(var(--synth-blue-light))",
+          "blue-glow": "hsl(var(--synth-blue-glow))",
+          navy: "hsl(var(--synth-navy))",
+          "navy-light": "hsl(var(--synth-navy-light))",
+          slate: "hsl(var(--synth-slate))",
+          surface: "hsl(var(--synth-surface))",
+          "surface-light": "hsl(var(--synth-surface-light))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -46,5 +63,5 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [require("tailwindcss-animate")],
 };
