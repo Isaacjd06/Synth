@@ -181,12 +181,12 @@ export async function POST(req: Request) {
           }
           assistantContent = `I tried to create a workflow, but encountered an error: ${generateData.error || "Unknown error"}`;
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         logError("app/api/chat (workflow creation)", error, {
           user_id: userId,
           intent: "create_workflow",
         });
-        assistantContent = `I encountered an error while creating the workflow: ${error.message || "Unknown error"}`;
+        assistantContent = `I encountered an error while creating the workflow: ${error instanceof Error ? error.message : "Unknown error"}`;
       }
     } else if (intent === "run_workflow") {
       actionTaken = "run_workflow";
@@ -220,13 +220,13 @@ export async function POST(req: Request) {
           } else {
             assistantContent = `I tried to run the workflow, but encountered an error: ${runData.error || "Unknown error"}`;
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           logError("app/api/chat (workflow execution)", error, {
             user_id: userId,
             workflow_id: workflowId,
             intent: "run_workflow",
           });
-          assistantContent = `I encountered an error while running the workflow: ${error.message || "Unknown error"}`;
+          assistantContent = `I encountered an error while running the workflow: ${error instanceof Error ? error.message : "Unknown error"}`;
         }
       } else {
         assistantContent =
@@ -293,12 +293,12 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/chat", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );
@@ -395,11 +395,11 @@ async function generateGeneralResponse(
           "I'm here to help with workflow automation.",
       };
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/chat (generateGeneralResponse)", error);
     return {
       ok: false,
-      error: error.message || "Failed to generate response",
+      error: error instanceof Error ? error.message : "Failed to generate response",
     };
   }
 

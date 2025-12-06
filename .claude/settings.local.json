@@ -55,7 +55,8 @@
       "Bash(npx tsc:*)",
       "Bash(pnpm build:*)",
       "Bash(if exist .env type .env)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []

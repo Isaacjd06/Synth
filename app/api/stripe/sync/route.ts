@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const subscription = subscriptions.data[0] as any;
+    const subscription = subscriptions.data[0];
     const priceId = subscription.items.data[0]?.price.id;
     const trialEnd = subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
@@ -109,10 +109,10 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("STRIPE SYNC ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

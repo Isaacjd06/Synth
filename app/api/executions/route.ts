@@ -5,8 +5,8 @@ import { prisma } from "@/lib/prisma";
 // Type definitions
 interface CreateExecutionBody {
   workflow_id: string;
-  input_data?: any;
-  output_data?: any;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   status?: string;
   pipedream_execution_id?: string;
   finished_at?: string;
@@ -14,8 +14,8 @@ interface CreateExecutionBody {
 
 interface UpdateExecutionBody {
   id: string;
-  input_data?: any;
-  output_data?: any;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   status?: string;
   pipedream_execution_id?: string;
   finished_at?: string;

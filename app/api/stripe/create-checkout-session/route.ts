@@ -4,11 +4,16 @@ import { getOrCreateStripeCustomer, validatePlanAndAddons } from "@/lib/billing"
 import { stripe } from "@/lib/stripe";
 import type Stripe from "stripe";
 
+interface CreateCheckoutSessionRequestBody {
+  planId: string;
+  addonIds?: string[];
+}
+
 /**
  * POST /api/stripe/create-checkout-session
- * 
+ *
  * Creates a Stripe Checkout Session for subscription with 3-day free trial and optional add-ons.
- * 
+ *
  * Body:
  * - planId: Stripe price ID for the plan
  * - addonIds: Array of Stripe price IDs for add-ons (optional)
@@ -21,7 +26,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as CreateCheckoutSessionRequestBody;
     const { planId, addonIds = [] } = body;
 
     if (!planId) {
@@ -89,10 +94,10 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("STRIPE CHECKOUT SESSION ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

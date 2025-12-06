@@ -21,7 +21,7 @@ declare module "next-auth" {
       subscriptionStartedAt?: Date | null;
       subscriptionEndsAt?: Date | null;
       trialEndsAt?: Date | null;
-      addOns?: any | null;
+      addOns?: Record<string, unknown> | null;
       stripePaymentMethodId?: string | null;
     };
   }
@@ -43,7 +43,7 @@ declare module "next-auth" {
     subscriptionStartedAt?: Date | null;
     subscriptionEndsAt?: Date | null;
     trialEndsAt?: Date | null;
-    addOns?: any | null;
+    addOns?: Record<string, unknown> | null;
     stripePaymentMethodId?: string | null;
   }
 }

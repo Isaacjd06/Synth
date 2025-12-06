@@ -15,6 +15,10 @@ interface AddOn {
   quantity: number;
 }
 
+interface ManageAddonsRequestBody {
+  add_on_price_ids?: string[];
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Authenticate user
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
     const userId = session.user.id;
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as ManageAddonsRequestBody;
     const { add_on_price_ids = [] } = body;
 
     // 3. Validate add-ons
@@ -66,7 +70,7 @@ export async function POST(req: Request) {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        addOns: addOns as any,
+        addOns: addOns,
         subscriptionStatus: updatedSubscription.status,
       },
     });
@@ -93,12 +97,12 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/manage-addons", error, {
       userId: (await auth())?.user?.id,
     });
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

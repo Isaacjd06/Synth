@@ -90,7 +90,7 @@ export async function GET(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/invoices", error, {
       userId: (await auth())?.user?.id,
     });

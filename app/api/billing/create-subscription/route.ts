@@ -36,11 +36,17 @@ const ADDON_PRICE_MAP: Record<string, string> = {
   // Add more recurring subscription add-ons as needed
 };
 
+interface CreateSubscriptionRequestBody {
+  plan: string;
+  addons?: string[];
+  coupon?: string;
+}
+
 /**
  * POST /api/billing/create-subscription
- * 
+ *
  * Creates a new subscription for the authenticated user.
- * 
+ *
  * Request body:
  * {
  *   "plan": "starter" | "pro" | "agency",
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as CreateSubscriptionRequestBody;
     const { plan, addons = [], coupon } = body;
 
     if (!plan) {
@@ -188,8 +194,8 @@ export async function POST(req: Request) {
     const subscription = await stripe.subscriptions.create(subscriptionParams);
 
     // 7. Extract renewal date from current_period_end
-    const renewalAt = (subscription as any).current_period_end
-      ? new Date((subscription as any).current_period_end * 1000)
+    const renewalAt = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
       : null;
 
     // 8. Save to Prisma using camelCase field names
@@ -219,7 +225,7 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/create-subscription", error, {
       userId: (await auth())?.user?.id,
     });

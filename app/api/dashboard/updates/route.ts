@@ -69,7 +69,7 @@ export async function GET() {
       totalExecutions > 0 ? (successExecutions / totalExecutions) * 100 : 0;
 
     // Get recent notable events
-    const updates: any[] = [];
+    const updates: Array<Record<string, unknown>> = [];
 
     // Check for workflows that never ran
     const workflows = await prisma.workflows.findMany({
@@ -176,12 +176,12 @@ export async function GET() {
         successRate: Math.round(successRate * 100) / 100, // Round to 2 decimals
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DASHBOARD UPDATES ERROR:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

@@ -28,8 +28,8 @@ interface Execution {
   status: string;
   started_at: string;
   finished_at?: string;
-  input_data?: Record<string, any>;
-  output_data?: Record<string, any>;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   error?: string;
 }
 

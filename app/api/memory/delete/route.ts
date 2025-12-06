@@ -1,8 +1,10 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+
+interface MemoryDeleteRequestBody {
+  id: string;
+}
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +14,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const { id } = await req.json();
+    const { id } = await req.json() as MemoryDeleteRequestBody;
 
     if (!id) {
       return NextResponse.json(
@@ -48,12 +50,12 @@ export async function POST(req: Request) {
       { status: 200 }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("MEMORY DELETE ERROR:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

@@ -97,7 +97,7 @@ export async function GET(req: Request) {
     // Redirect to connections page or return success
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/connections?connected=${service}`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/connections/callback", error);
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     return NextResponse.redirect(`${baseUrl}/connections?error=connection_failed`);

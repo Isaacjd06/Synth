@@ -36,6 +36,26 @@ const REQUIRED_ENV_VARS: EnvVar[] = [
     required: true,
     description: 'Pipedream API key for workflow execution',
   },
+  {
+    name: 'PIPEDREAM_USER_ID',
+    required: true,
+    description: 'Pipedream workspace/user ID for creating workflows',
+  },
+  {
+    name: 'STRIPE_SECRET_KEY',
+    required: true,
+    description: 'Stripe secret key for payment processing',
+  },
+  {
+    name: 'UPSTASH_REDIS_REST_URL',
+    required: true,
+    description: 'Upstash Redis REST URL for rate limiting',
+  },
+  {
+    name: 'UPSTASH_REDIS_REST_TOKEN',
+    required: true,
+    description: 'Upstash Redis REST token for rate limiting',
+  },
 ];
 
 const OPTIONAL_ENV_VARS: EnvVar[] = [
@@ -48,6 +68,21 @@ const OPTIONAL_ENV_VARS: EnvVar[] = [
     name: 'PIPEDREAM_API_URL',
     required: false,
     description: 'Pipedream API base URL (defaults to https://api.pipedream.com/v1)',
+  },
+  {
+    name: 'STRIPE_WEBHOOK_SECRET',
+    required: false,
+    description: 'Stripe webhook secret for verifying webhook signatures (required for production)',
+  },
+  {
+    name: 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
+    required: false,
+    description: 'Stripe publishable key for client-side use (falls back to STRIPE_PUBLISHABLE_KEY)',
+  },
+  {
+    name: 'STRIPE_PUBLISHABLE_KEY',
+    required: false,
+    description: 'Stripe publishable key (fallback if NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY not set)',
   },
 ];
 

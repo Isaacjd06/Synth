@@ -6,6 +6,23 @@ import type { Adapter } from "next-auth/adapters";
 import { logAudit } from "@/lib/audit";
 import { stripe } from "@/lib/stripe";
 import { logError } from "@/lib/error-logger";
+import { validateEnvOrThrow } from "@/lib/env";
+
+// Validate environment variables at module load time
+// This ensures the app fails fast if required env vars are missing
+if (process.env.NODE_ENV !== "test") {
+  try {
+    validateEnvOrThrow();
+  } catch (error) {
+    // In development, log the error but don't crash (allows for hot reload)
+    if (process.env.NODE_ENV === "development") {
+      console.error("⚠️  Environment validation error:", error);
+    } else {
+      // In production, throw to prevent app from starting
+      throw error;
+    }
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma) as Adapter,
@@ -45,9 +62,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               data: { stripeCustomerId: customer.id },
             });
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const err = error as Error;
           // Log error but don't block login flow
-          logError("lib/auth (signIn - Stripe customer creation)", error, {
+          logError("lib/auth (signIn - Stripe customer creation)", err, {
             email: user.email,
             userId: user?.id,
           });

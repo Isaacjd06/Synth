@@ -138,12 +138,12 @@ export async function POST(request: NextRequest) {
           active: true,
         },
       });
-    } catch (updateError: any) {
+    } catch (updateError: unknown) {
       console.error("Failed to update workflow:", updateError);
       return NextResponse.json(
         {
           error: "Failed to update database after workflow activation",
-          details: updateError.message,
+          details: updateError instanceof Error ? updateError.message : "Unknown error",
         },
         { status: 500 }
       );

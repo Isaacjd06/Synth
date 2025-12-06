@@ -32,10 +32,10 @@ export async function POST(req: Request) {
     }
 
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err: any) {
+  } catch (err: unknown) {
     logError("app/api/webhooks/stripe (signature verification)", err);
     return NextResponse.json(
-      { error: `Webhook signature verification failed: ${err.message}` },
+      { error: `Webhook signature verification failed: ${err instanceof Error ? err.message : 'Unknown error'}` },
       { status: 400 }
     );
   }
@@ -70,11 +70,12 @@ export async function POST(req: Request) {
         const invoice = event.data.object as Stripe.Invoice;
 
         // Extract subscription ID - can be string or Subscription object
-        // Using 'any' cast because Stripe types may not include subscription in all versions
-        const subscriptionId = 
-          (invoice as any).subscription && typeof (invoice as any).subscription === "string"
-            ? (invoice as any).subscription
-            : (invoice as any).subscription?.id;
+        const subscriptionId =
+          typeof invoice.subscription === "string"
+            ? invoice.subscription
+            : typeof invoice.subscription === "object" && invoice.subscription?.id
+            ? invoice.subscription.id
+            : undefined;
 
         if (subscriptionId) {
           // Find user by subscription ID
@@ -101,11 +102,12 @@ export async function POST(req: Request) {
         const invoice = event.data.object as Stripe.Invoice;
 
         // Extract subscription ID - can be string or Subscription object
-        // Using 'any' cast because Stripe types may not include subscription in all versions
-        const subscriptionId = 
-          (invoice as any).subscription && typeof (invoice as any).subscription === "string"
-            ? (invoice as any).subscription
-            : (invoice as any).subscription?.id;
+        const subscriptionId =
+          typeof invoice.subscription === "string"
+            ? invoice.subscription
+            : typeof invoice.subscription === "object" && invoice.subscription?.id
+            ? invoice.subscription.id
+            : undefined;
 
         if (subscriptionId) {
           // Find user by subscription ID
@@ -161,9 +163,9 @@ export async function POST(req: Request) {
               subscriptionStatus: status,
               trialEndsAt: trialEnd,
               subscriptionStartedAt: new Date(subscription.created * 1000),
-              subscriptionEndsAt: 
-                (subscription as any).current_period_end
-                  ? new Date((subscription as any).current_period_end * 1000)
+              subscriptionEndsAt:
+                subscription.current_period_end
+                  ? new Date(subscription.current_period_end * 1000)
                   : subscription.trial_end
                     ? new Date(subscription.trial_end * 1000)
                     : null,
@@ -211,7 +213,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Log error but don't mark as processed so it can be retried
     logError("app/api/webhooks/stripe (event processing)", error, {
       eventId: event.id,
@@ -221,7 +223,7 @@ export async function POST(req: Request) {
     await prisma.webhookEventLog.update({
       where: { stripeEventId: event.id },
       data: {
-        errorMessage: error.message || "Unknown error",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
       },
     });
 

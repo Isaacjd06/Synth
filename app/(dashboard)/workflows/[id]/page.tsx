@@ -112,7 +112,7 @@ export default async function WorkflowDetailPage({
           <CardContent>
             {workflow.actions && Array.isArray(workflow.actions) && workflow.actions.length > 0 ? (
               <div className="space-y-4">
-                {workflow.actions.map((action: any, index: number) => (
+                {workflow.actions.map((action: Record<string, unknown>, index: number) => (
                   <div key={index} className="border border-gray-800 rounded-lg p-4">
                     <div className="mb-2">
                       <span className="text-sm font-medium text-gray-300">

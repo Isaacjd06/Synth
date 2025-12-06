@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       { clientSecret: setupIntent.client_secret },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/create-setup-intent", error, {
       userId: (await auth())?.user?.id,
     });

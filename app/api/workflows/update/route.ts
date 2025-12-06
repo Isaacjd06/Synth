@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +5,16 @@ import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { setWorkflowActive } from "@/lib/pipedreamClient";
 import { logError } from "@/lib/error-logger";
+
+interface WorkflowUpdateRequestBody {
+  id: string;
+  name?: string;
+  description?: string;
+  intent?: string;
+  trigger?: Record<string, unknown>;
+  actions?: Array<Record<string, unknown>>;
+  active?: boolean;
+}
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +24,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as WorkflowUpdateRequestBody;
 
     const { id, name, description, intent, trigger, actions, active } = body;
 
@@ -43,7 +51,14 @@ export async function POST(req: Request) {
     }
 
     // Build update object dynamically
-    const updateData: any = {};
+    const updateData: {
+      name?: string;
+      description?: string;
+      intent?: string;
+      trigger?: Record<string, unknown>;
+      actions?: Array<Record<string, unknown>>;
+      active?: boolean;
+    } = {};
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
@@ -97,7 +112,7 @@ export async function POST(req: Request) {
     if (active !== undefined && existingWorkflow.n8n_workflow_id) {
       try {
         await setWorkflowActive(existingWorkflow.n8n_workflow_id, active);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Log error but don't fail the update - we still update our DB
         logError("app/api/workflows/update (Pipedream sync)", error, {
           workflow_id: id,
@@ -119,10 +134,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json(workflow, { status: 200 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW UPDATE ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

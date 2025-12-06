@@ -178,11 +178,11 @@ export async function POST(request: Request) {
       { ok: true, message: "Workflow executed", execution },
       { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     logError("app/api/workflows/run", err);
 
     return NextResponse.json(
-      { ok: false, error: err.message || "Internal server error" },
+      { ok: false, error: err instanceof Error ? err.message : "Internal server error" },
       { status: 500, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }

@@ -46,9 +46,10 @@ export default function RunWorkflowButton({ workflowId }: RunWorkflowButtonProps
       setTimeout(() => {
         router.refresh();
       }, 500);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as Error;
       toast.error("Network Error", {
-        description: err.message || "Failed to connect to the server. Please try again.",
+        description: error.message || "Failed to connect to the server. Please try again.",
       });
     } finally {
       setLoading(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
@@ -152,8 +152,8 @@ function PaymentForm({
 
         onSuccess(paymentMethodId);
       }
-    } catch (err: any) {
-      const message = err.message || "An unexpected error occurred";
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred";
       setErrorMessage(message);
       onError(message);
     } finally {
@@ -198,67 +198,16 @@ export default function BillingPage() {
   const [purchasingAddon, setPurchasingAddon] = useState<string | null>(null);
   const [switchingPlan, setSwitchingPlan] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly");
-  const [purchaseLogs, setPurchaseLogs] = useState<any[]>([]);
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [purchaseLogs, setPurchaseLogs] = useState<unknown[]>([]);
+  const [invoices, setInvoices] = useState<unknown[]>([]);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [upcomingInvoice, setUpcomingInvoice] = useState<any>(null);
+  const [upcomingInvoice, setUpcomingInvoice] = useState<unknown>(null);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [paymentMethodDetails, setPaymentMethodDetails] = useState<PaymentMethodDetails | null>(null);
   const [savePaymentMethodClientSecret, setSavePaymentMethodClientSecret] = useState<string | null>(null);
   const [showSavePaymentForm, setShowSavePaymentForm] = useState(false);
   const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
-
-  // Fetch billing state on mount
-  useEffect(() => {
-    fetchBillingState();
-    fetchPurchaseLogs();
-    fetchInvoices();
-  }, []);
-
-  // Fetch payment method details if user has a payment method
-  useEffect(() => {
-    if (billingState?.hasPaymentMethod) {
-      fetchPaymentMethodDetails();
-      setShowSavePaymentForm(false);
-      setSavePaymentMethodClientSecret(null);
-    } else {
-      setPaymentMethodDetails(null);
-      // Automatically show Payment Element if user has no payment method
-      if (!billingState?.hasPaymentMethod && !showSavePaymentForm && !savePaymentMethodClientSecret) {
-        setShowSavePaymentForm(true);
-      }
-    }
-  }, [billingState?.hasPaymentMethod]);
-
-  // Initialize setup intent for saving payment method when form should be shown
-  useEffect(() => {
-    if (showSavePaymentForm && !savePaymentMethodClientSecret && !billingState?.hasPaymentMethod && billingState !== null && !loading) {
-      initializeSavePaymentMethod();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSavePaymentForm, savePaymentMethodClientSecret, billingState?.hasPaymentMethod, loading]);
-
-  // Fetch upcoming invoice when switching plans
-  useEffect(() => {
-    if (switchingPlan && billingState?.stripeCustomerId) {
-      fetchUpcomingInvoice();
-    }
-  }, [switchingPlan]);
-
-  // Initialize setup intent when payment form should be shown
-  useEffect(() => {
-    if (showPaymentForm && !clientSecret && !billingState?.hasPaymentMethod) {
-      initializePayment();
-    }
-  }, [showPaymentForm]);
-
-  // Initialize setup intent when update payment form should be shown
-  useEffect(() => {
-    if (showUpdatePaymentForm && !updatePaymentClientSecret && billingState?.hasPaymentMethod) {
-      initializeUpdatePayment();
-    }
-  }, [showUpdatePaymentForm]);
 
   const fetchBillingState = async () => {
     try {
@@ -298,9 +247,12 @@ export default function BillingPage() {
 
       // Set current add-ons
       setSelectedAddOns(data.addOns || []);
-    } catch (err: any) {
-      const errorData = err.response?.data || {};
-      setError(errorData.message || err.message || "Failed to load billing information");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message || "Failed to load billing information");
+      } else {
+        setError("Failed to load billing information");
+      }
     } finally {
       setLoading(false);
     }
@@ -313,7 +265,7 @@ export default function BillingPage() {
         const data = await response.json();
         setPurchaseLogs(data.purchases || []);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       // Silently fail - purchase logs are not critical
       console.error("Failed to fetch purchase logs:", err);
     }
@@ -332,7 +284,7 @@ export default function BillingPage() {
     }
   };
 
-  const fetchUpcomingInvoice = async () => {
+  const fetchUpcomingInvoice = useCallback(async () => {
     try {
       const response = await fetch("/api/billing/info");
       if (response.ok) {
@@ -345,7 +297,7 @@ export default function BillingPage() {
       // Silently fail
       console.error("Failed to fetch upcoming invoice:", err);
     }
-  };
+  }, []);
 
   const fetchPaymentMethodDetails = async () => {
     try {
@@ -395,15 +347,15 @@ export default function BillingPage() {
       const data = await setupIntentResponse.json();
       setSavePaymentMethodClientSecret(data.clientSecret);
       setShowSavePaymentForm(true);
-    } catch (err: any) {
-      setError(err.message || "Failed to initialize payment method setup");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to initialize payment method setup");
       setShowSavePaymentForm(false);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const initializePayment = async () => {
+  const initializePayment = useCallback(async () => {
     try {
       setIsSubmitting(true);
       // Ensure customer exists
@@ -428,15 +380,15 @@ export default function BillingPage() {
 
       const data = await setupIntentResponse.json();
       setClientSecret(data.clientSecret);
-    } catch (err: any) {
-      setError(err.message || "Failed to initialize payment");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to initialize payment");
       setShowPaymentForm(false);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, []);
 
-  const initializeUpdatePayment = async () => {
+  const initializeUpdatePayment = useCallback(async () => {
     try {
       setIsSubmitting(true);
       setError(null);
@@ -454,14 +406,14 @@ export default function BillingPage() {
 
       const data = await setupIntentResponse.json();
       setUpdatePaymentClientSecret(data.clientSecret);
-    } catch (err: any) {
-      setError(err.message || "Failed to initialize payment method update");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to initialize payment method update");
       setShowUpdatePaymentForm(false);
       setSuccessMessage(null);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, []);
 
   const handlePlanSelect = (planId: string) => {
     setSelectedPlan(planId);
@@ -515,8 +467,9 @@ export default function BillingPage() {
           setPaymentMethodSaved(false);
           router.refresh();
         }, 2000);
-      } catch (err: any) {
-        setError(`Error saving payment method: ${err.message || "Failed to save payment method"}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save payment method";
+        setError(`Error saving payment method: ${message}`);
         setSuccessMessage(null);
       } finally {
         setIsSubmitting(false);
@@ -552,8 +505,9 @@ export default function BillingPage() {
         setTimeout(() => {
           router.refresh();
         }, 1500);
-      } catch (err: any) {
-        setError(`Error updating payment method: ${err.message || "Failed to update payment method"}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to update payment method";
+        setError(`Error updating payment method: ${message}`);
         setSuccessMessage(null);
       } finally {
         setIsSubmitting(false);
@@ -598,8 +552,8 @@ export default function BillingPage() {
       setTimeout(() => {
         router.refresh();
       }, 2000);
-    } catch (err: any) {
-      setError(err.message || "Failed to create subscription");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create subscription");
     } finally {
       setIsSubmitting(false);
     }
@@ -648,8 +602,8 @@ export default function BillingPage() {
         setSuccessMessage("Subscription created successfully!");
         await fetchBillingState();
         setTimeout(() => router.refresh(), 2000);
-      } catch (err: any) {
-        setError(err.message || "Failed to create subscription");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to create subscription");
       } finally {
         setIsSubmitting(false);
       }
@@ -710,9 +664,9 @@ export default function BillingPage() {
       setTimeout(() => {
         router.refresh();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Show error alert
-      setError(err.message || "Failed to switch plan");
+      setError(err instanceof Error ? err.message : "Failed to switch plan");
       setSuccessMessage(null);
     } finally {
       setSwitchingPlan(null);
@@ -769,15 +723,68 @@ export default function BillingPage() {
       setTimeout(() => {
         router.refresh();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Show error with payment failure message
-      setError(`Payment failed: ${err.message || "Failed to purchase add-on"}`);
+      const message = err instanceof Error ? err.message : "Failed to purchase add-on";
+      setError(`Payment failed: ${message}`);
       setSuccessMessage(null);
     } finally {
       setPurchasingAddon(null);
       setIsSubmitting(false);
     }
   };
+
+  // Fetch billing state on mount
+  useEffect(() => {
+    fetchBillingState();
+    fetchPurchaseLogs();
+    fetchInvoices();
+  }, []);
+
+  // Fetch payment method details if user has a payment method
+  useEffect(() => {
+    if (billingState?.hasPaymentMethod) {
+      fetchPaymentMethodDetails();
+      setShowSavePaymentForm(false);
+      setSavePaymentMethodClientSecret(null);
+    } else {
+      setPaymentMethodDetails(null);
+      // Automatically show Payment Element if user has no payment method
+      if (!billingState?.hasPaymentMethod && !showSavePaymentForm && !savePaymentMethodClientSecret) {
+        setShowSavePaymentForm(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billingState?.hasPaymentMethod]);
+
+  // Initialize setup intent for saving payment method when form should be shown
+  useEffect(() => {
+    if (showSavePaymentForm && !savePaymentMethodClientSecret && !billingState?.hasPaymentMethod && billingState !== null && !loading) {
+      initializeSavePaymentMethod();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSavePaymentForm, savePaymentMethodClientSecret, billingState?.hasPaymentMethod, loading]);
+
+  // Fetch upcoming invoice when switching plans
+  useEffect(() => {
+    if (switchingPlan && billingState?.stripeCustomerId) {
+      fetchUpcomingInvoice();
+    }
+  }, [switchingPlan, billingState?.stripeCustomerId, fetchUpcomingInvoice]);
+
+  // Initialize setup intent when payment form should be shown
+  useEffect(() => {
+    if (showPaymentForm && !clientSecret && !billingState?.hasPaymentMethod) {
+      initializePayment();
+    }
+  }, [showPaymentForm, clientSecret, billingState?.hasPaymentMethod, initializePayment]);
+
+  // Initialize setup intent when update payment form should be shown
+  useEffect(() => {
+    if (showUpdatePaymentForm && !updatePaymentClientSecret && billingState?.hasPaymentMethod) {
+      initializeUpdatePayment();
+    }
+  }, [showUpdatePaymentForm, updatePaymentClientSecret, billingState?.hasPaymentMethod, initializeUpdatePayment]);
 
   if (loading) {
     return (
@@ -791,7 +798,7 @@ export default function BillingPage() {
   }
 
   const hasPaymentMethod = billingState?.hasPaymentMethod || false;
-  const hasSubscription = billingState?.subscriptionStatus && 
+  const hasSubscription = billingState?.subscriptionStatus &&
     ["active", "trialing", "past_due", "cancels_at_period_end"].includes(billingState.subscriptionStatus);
   const isPastDue = billingState?.subscriptionStatus === "past_due";
   const isCanceling = billingState?.subscriptionStatus === "cancels_at_period_end";
@@ -824,8 +831,8 @@ export default function BillingPage() {
       setShowCancelModal(false);
       setCancelReason("");
       await fetchBillingState();
-    } catch (err: any) {
-      setError(err.message || "Failed to cancel subscription");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to cancel subscription");
     } finally {
       setIsSubmitting(false);
     }
@@ -847,8 +854,8 @@ export default function BillingPage() {
 
       setSuccessMessage("Subscription reactivated successfully!");
       await fetchBillingState();
-    } catch (err: any) {
-      setError(err.message || "Failed to reactivate subscription");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to reactivate subscription");
     } finally {
       setIsSubmitting(false);
     }
@@ -1001,7 +1008,7 @@ export default function BillingPage() {
                 <PaymentForm
                   clientSecret={savePaymentMethodClientSecret}
                   onSuccess={handlePaymentSuccess}
-                  onError={(err) => setError(err)}
+                  onError={(err: string) => setError(err)}
                   isLoading={isSubmitting}
                   submitButtonText="Save Payment Method"
                 />
@@ -1140,6 +1147,7 @@ export default function BillingPage() {
               <button
                 type="button"
                 onClick={() => setBillingInterval(billingInterval === "monthly" ? "yearly" : "monthly")}
+                aria-label="Toggle billing interval"
                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
                   billingInterval === "yearly" ? "bg-gradient-to-r from-blue-600 to-purple-600" : "bg-gray-600"
                 }`}
@@ -1407,7 +1415,7 @@ export default function BillingPage() {
                 <PaymentForm
                   clientSecret={clientSecret}
                   onSuccess={handlePaymentSuccess}
-                  onError={(err) => setError(err)}
+                  onError={(err: string) => setError(err)}
                   isLoading={isSubmitting}
                 />
               </Elements>
@@ -1446,7 +1454,7 @@ export default function BillingPage() {
                 <PaymentForm
                   clientSecret={updatePaymentClientSecret}
                   onSuccess={handlePaymentSuccess}
-                  onError={(err) => {
+                  onError={(err: string) => {
                     setError(`Error updating payment method: ${err}`);
                     setSuccessMessage(null);
                   }}
@@ -1478,15 +1486,15 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {invoices.map((invoice) => (
+                {invoices.map((invoice: Record<string, unknown>) => (
                   <div
-                    key={invoice.id}
+                    key={String(invoice.id)}
                     className="flex items-center justify-between p-4 border border-gray-700 rounded-lg bg-gray-900/50"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <span className="text-white font-medium">
-                          {invoice.number || invoice.id}
+                          {String(invoice.number || invoice.id)}
                         </span>
                         <span className={`px-2 py-1 rounded text-xs ${
                           invoice.status === "paid"
@@ -1495,15 +1503,15 @@ export default function BillingPage() {
                             ? "bg-yellow-600 text-white"
                             : "bg-red-600 text-white"
                         }`}>
-                          {invoice.status?.toUpperCase()}
+                          {typeof invoice.status === "string" ? invoice.status.toUpperCase() : "UNKNOWN"}
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-gray-400">
-                        {invoice.created && new Date(invoice.created).toLocaleDateString()} • {formatCurrency(invoice.amount_paid || 0, invoice.currency)}
+                        {invoice.created && typeof invoice.created === "number" && new Date(invoice.created * 1000).toLocaleDateString()} • {formatCurrency(typeof invoice.amount_paid === "number" ? invoice.amount_paid : 0, typeof invoice.currency === "string" ? invoice.currency : "usd")}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {invoice.hosted_invoice_url && (
+                      {invoice.hosted_invoice_url && typeof invoice.hosted_invoice_url === "string" && (
                         <a
                           href={invoice.hosted_invoice_url}
                           target="_blank"
@@ -1513,7 +1521,7 @@ export default function BillingPage() {
                           View
                         </a>
                       )}
-                      {invoice.invoice_pdf && (
+                      {invoice.invoice_pdf && typeof invoice.invoice_pdf === "string" && (
                         <a
                           href={invoice.invoice_pdf}
                           target="_blank"
@@ -1541,19 +1549,19 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {purchaseLogs.map((log) => {
+                {purchaseLogs.map((log: Record<string, unknown>) => {
                   const addon = ADDONS.find((a) => a.id === log.addonId);
                   return (
                     <div
-                      key={log.id}
+                      key={String(log.id)}
                       className="flex items-center justify-between p-4 border border-gray-700 rounded-lg bg-gray-900/50"
                     >
                       <div>
                         <div className="text-white font-medium">
-                          {addon?.name || log.addonId}
+                          {addon?.name || String(log.addonId)}
                         </div>
                         <div className="text-sm text-gray-400 mt-1">
-                          {new Date(log.createdAt).toLocaleDateString()} • {formatCurrency(log.amount || 0, log.currency)}
+                          {typeof log.createdAt === "string" && new Date(log.createdAt).toLocaleDateString()} • {formatCurrency(typeof log.amount === "number" ? log.amount : 0, typeof log.currency === "string" ? log.currency : "usd")}
                         </div>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs ${
@@ -1561,7 +1569,7 @@ export default function BillingPage() {
                           ? "bg-green-600 text-white"
                           : "bg-red-600 text-white"
                       }`}>
-                        {log.status?.toUpperCase()}
+                        {typeof log.status === "string" ? log.status.toUpperCase() : "UNKNOWN"}
                       </span>
                     </div>
                   );
@@ -1600,11 +1608,11 @@ export default function BillingPage() {
             <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4">
               <h3 className="text-white font-semibold text-lg mb-4">Cancel Subscription</h3>
               <p className="text-gray-400 text-sm mb-4">
-                We're sorry to see you go. Please let us know why you're canceling:
+                We&apos;re sorry to see you go. Please let us know why you&apos;re canceling:
               </p>
               <textarea
                 value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCancelReason(e.target.value)}
                 placeholder="Enter your reason..."
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white placeholder-gray-500 resize-none h-24 mb-4"
               />
@@ -1646,14 +1654,17 @@ export default function BillingPage() {
                 <div className="flex justify-between">
                   <span className="text-gray-400">Amount:</span>
                   <span className="text-white font-medium">
-                    {formatCurrency(upcomingInvoice.amount_due || 0, upcomingInvoice.currency)}
+                    {formatCurrency(
+                      typeof upcomingInvoice === "object" && upcomingInvoice !== null && "amount_due" in upcomingInvoice && typeof upcomingInvoice.amount_due === "number" ? upcomingInvoice.amount_due : 0,
+                      typeof upcomingInvoice === "object" && upcomingInvoice !== null && "currency" in upcomingInvoice && typeof upcomingInvoice.currency === "string" ? upcomingInvoice.currency : "usd"
+                    )}
                   </span>
                 </div>
-                {upcomingInvoice.period_start && (
+                {typeof upcomingInvoice === "object" && upcomingInvoice !== null && "period_start" in upcomingInvoice && upcomingInvoice.period_start && (
                   <div className="flex justify-between">
                     <span className="text-gray-400">Billing Period:</span>
                     <span className="text-white">
-                      {new Date(upcomingInvoice.period_start).toLocaleDateString()} - {upcomingInvoice.period_end ? new Date(upcomingInvoice.period_end).toLocaleDateString() : ""}
+                      {typeof upcomingInvoice.period_start === "number" && new Date(upcomingInvoice.period_start * 1000).toLocaleDateString()} - {"period_end" in upcomingInvoice && typeof upcomingInvoice.period_end === "number" ? new Date(upcomingInvoice.period_end * 1000).toLocaleDateString() : ""}
                     </span>
                   </div>
                 )}

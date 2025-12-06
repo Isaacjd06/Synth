@@ -48,7 +48,7 @@ export async function GET() {
     ) {
       return NextResponse.json({
         ok: true,
-        insights: storedInsights.map((insight: any) => ({
+        insights: storedInsights.map((insight: Record<string, unknown>) => ({
           id: insight.id,
           sourceType: insight.source_type,
           title: insight.title,
@@ -61,7 +61,7 @@ export async function GET() {
     }
 
     // Generate new insights based on current data
-    const insights: any[] = [];
+    const insights: Array<Record<string, unknown>> = [];
 
     // 1. Analyze workflow patterns
     const workflows = await prisma.workflows.findMany({
@@ -203,12 +203,12 @@ export async function GET() {
         createdAt: new Date(),
       })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/dashboard/advisory", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

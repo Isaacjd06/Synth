@@ -77,9 +77,10 @@ export default function SynthUpdatesCard() {
         // Limit to 3 as required
         setRecentWorkflows(allWorkflows.slice(0, 3));
         setRecentExecutions(allExecutions.slice(0, 3));
-      } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        const errorMessage = err.message || "Failed to load dashboard data";
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error("Error fetching dashboard data:", error);
+        const errorMessage = error.message || "Failed to load dashboard data";
         setError(errorMessage);
         toast.error("Failed to Load Dashboard", {
           description: errorMessage,

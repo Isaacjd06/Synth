@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       { stripeCustomerId: customer.id },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/create-customer", error, {
       userId: (await auth())?.user?.id,
     });

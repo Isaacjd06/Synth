@@ -39,10 +39,10 @@ export async function GET(request: NextRequest) {
       ok: true,
       items: knowledgeItems,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/knowledge error:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }
@@ -119,10 +119,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("POST /api/knowledge error:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }
@@ -175,10 +175,10 @@ export async function DELETE(request: NextRequest) {
       ok: true,
       message: "Knowledge item deleted successfully",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DELETE /api/knowledge error:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

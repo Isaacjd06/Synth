@@ -213,7 +213,14 @@ export async function updateSubscriptionAddons(
 export async function calculateSubscriptionTotal(
   planPriceId: string,
   addOnPriceIds: string[] = [],
-): Promise<{ total: number; currency: string; breakdown: any }> {
+): Promise<{
+  total: number;
+  currency: string;
+  breakdown: {
+    plan: { price_id: string; amount: number };
+    addOns: Array<{ price_id: string; amount: number; currency: string }>;
+  };
+}> {
   // Fetch plan price
   const planPrice = await stripe.prices.retrieve(planPriceId);
   const planAmount = planPrice.unit_amount || 0;
@@ -314,12 +321,17 @@ export async function getUpcomingInvoice(
   customerId: string,
 ): Promise<Stripe.Invoice | null> {
   try {
-    return await (stripe.invoices as any).retrieveUpcoming({
+    // Use type assertion with unknown intermediate to safely access Stripe's method
+    const invoices = stripe.invoices as unknown as {
+      retrieveUpcoming: (params: { customer: string }) => Promise<Stripe.Invoice>;
+    };
+    return await invoices.retrieveUpcoming({
       customer: customerId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string };
     // No upcoming invoice
-    if (error.code === "invoice_upcoming_none") {
+    if (err.code === "invoice_upcoming_none") {
       return null;
     }
     throw error;

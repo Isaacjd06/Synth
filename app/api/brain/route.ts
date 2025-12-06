@@ -1,8 +1,10 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+
+interface BrainRequestBody {
+  message: string;
+}
 
 // Later you will swap this with the Claude API call
 async function askClaude(prompt: string) {
@@ -20,7 +22,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as BrainRequestBody;
     const { message } = body;
 
     if (!message || typeof message !== "string") {
@@ -80,12 +82,12 @@ Your job:
       { status: 200 }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("BRAIN API ERROR:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

@@ -66,8 +66,8 @@ export async function POST(req: Request) {
         name: blueprint.name,
         description: blueprint.description || null,
         intent: intent,
-        trigger: blueprint.trigger as any, // Store as JSON
-        actions: blueprint.actions as any, // Store as JSON
+        trigger: blueprint.trigger as Record<string, unknown>, // Store as JSON
+        actions: blueprint.actions as Array<Record<string, unknown>>, // Store as JSON
         active: true,
       },
     });
@@ -148,12 +148,12 @@ export async function POST(req: Request) {
         { status: 207 } // 207 Multi-Status - partial success
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW GENERATE ERROR:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

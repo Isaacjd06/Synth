@@ -6,10 +6,11 @@
  * @param error - The error object or error message
  * @param metadata - Optional metadata object to include in the log
  */
-export function logError(location: string, error: any, metadata?: any): void {
+export function logError(location: string, error: unknown, metadata?: Record<string, unknown>): void {
   const timestamp = new Date().toISOString();
-  const errorMessage = error?.message || error?.toString() || String(error);
-  const errorStack = error?.stack || null;
+  const err = error as { message?: string; stack?: string; toString?: () => string };
+  const errorMessage = err?.message || err?.toString?.() || String(error);
+  const errorStack = err?.stack || null;
 
   console.error(`[${timestamp}] ERROR [${location}]`, {
     error: errorMessage,

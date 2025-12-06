@@ -4,7 +4,7 @@ import { executeWorkflow, PipedreamExecution } from "../pipedreamClient";
 
 export type RunResult =
   | { ok: true; execution: PipedreamExecution }
-  | { ok: false; error: string; details?: any };
+  | { ok: false; error: string; details?: unknown };
 
 /**
  * Execute a workflow in Pipedream
@@ -13,7 +13,7 @@ export type RunResult =
  */
 export async function runWorkflow(
   workflowId: string,
-  inputData?: Record<string, any>
+  inputData?: Record<string, unknown>
 ): Promise<RunResult> {
   const apiKey = process.env.PIPEDREAM_API_KEY;
 
@@ -32,11 +32,12 @@ export async function runWorkflow(
       ok: true,
       execution,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err as { message?: string };
     return {
       ok: false,
       error: "Network or fetch error while executing workflow in Pipedream.",
-      details: err?.message || err,
+      details: error?.message || err,
     };
   }
 }

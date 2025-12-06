@@ -84,7 +84,7 @@ export async function GET(req: Request) {
               (customer.invoice_settings.default_payment_method as Stripe.PaymentMethod)?.id)
           );
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Log error but don't fail the request - payment method check is best effort
         logError("app/api/billing/state (payment method check)", error, {
           userId,
@@ -107,7 +107,7 @@ export async function GET(req: Request) {
     };
 
     return NextResponse.json(response, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/state", error, {
       userId: (await auth())?.user?.id,
     });

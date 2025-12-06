@@ -10,7 +10,7 @@ export interface ChatMessage {
   content: string;
   conversation_id?: string | null;
   created_at: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 interface UseChatOptions {
@@ -69,14 +69,14 @@ export function useChat(options: UseChatOptions = {}) {
       
       if (data.ok && Array.isArray(data.messages)) {
         // Transform messages to match ChatMessage interface
-        const transformedMessages = data.messages.map((msg: any) => ({
-          id: msg.id,
-          user_id: msg.user_id || "",
-          role: msg.role,
-          content: msg.content,
-          conversation_id: msg.conversation_id,
-          created_at: msg.created_at,
-          metadata: msg.metadata,
+        const transformedMessages = data.messages.map((msg: Record<string, unknown>) => ({
+          id: String(msg.id),
+          user_id: String(msg.user_id || ""),
+          role: msg.role as "user" | "assistant" | "system",
+          content: String(msg.content),
+          conversation_id: msg.conversation_id as string | null | undefined,
+          created_at: String(msg.created_at),
+          metadata: msg.metadata as Record<string, unknown> | undefined,
         }));
         setMessages(transformedMessages);
         // Auto-scroll after loading
@@ -89,16 +89,17 @@ export function useChat(options: UseChatOptions = {}) {
         console.warn("Chat API returned unexpected format:", data);
         setMessages([]);
       }
-    } catch (err: any) {
-      console.error("Error loading messages:", err);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Error loading messages:", error);
       console.error("Error details:", {
-        message: err.message,
-        stack: err.stack,
-        name: err.name,
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
       });
-      setError(err.message || "Failed to load messages");
+      setError(error.message || "Failed to load messages");
       toast.error("Failed to Load Messages", {
-        description: err.message || "Could not load chat history.",
+        description: error.message || "Could not load chat history.",
       });
     } finally {
       setLoading(false);
@@ -128,10 +129,11 @@ export function useChat(options: UseChatOptions = {}) {
           return data.data;
         }
         return null;
-      } catch (err: any) {
-        console.error("Error saving message:", err);
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error("Error saving message:", error);
         toast.error("Failed to Save Message", {
-          description: err.message || "Could not save your message.",
+          description: error.message || "Could not save your message.",
         });
         return null;
       }
@@ -264,11 +266,12 @@ export function useChat(options: UseChatOptions = {}) {
         if (options.onMessageAdded && savedAssistantMessage) {
           options.onMessageAdded(savedAssistantMessage);
         }
-      } catch (err: any) {
-        console.error("Error sending message:", err);
-        setError(err.message || "Failed to send message");
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error("Error sending message:", error);
+        setError(error.message || "Failed to send message");
         toast.error("Failed to Send Message", {
-          description: err.message || "Could not send your message. Please try again.",
+          description: error.message || "Could not send your message. Please try again.",
         });
 
         // Remove optimistic messages on error

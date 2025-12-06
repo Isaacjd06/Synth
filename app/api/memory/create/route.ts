@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -8,6 +6,13 @@ import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
 import { logError } from "@/lib/error-logger";
 import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
+
+interface MemoryCreateRequestBody {
+  context_type: string;
+  content: string;
+  relevance_score?: number;
+  metadata?: Record<string, unknown>;
+}
 
 const memoryLimiter = createRateLimiter("memory", 15, 60);
 
@@ -22,7 +27,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as MemoryCreateRequestBody;
     const { context_type, content, relevance_score, metadata } = body;
 
     if (!context_type || content === undefined) {
@@ -66,12 +71,12 @@ export async function POST(req: Request) {
       },
       { status: 201 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/memory/create", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );

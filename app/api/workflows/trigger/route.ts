@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
           finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
         },
       });
-    } catch (insertError: any) {
+    } catch (insertError: unknown) {
       console.error('Failed to save execution to Neon:', insertError);
       // Non-fatal: execution ran successfully in Pipedream
     }

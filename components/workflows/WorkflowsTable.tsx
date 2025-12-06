@@ -57,10 +57,11 @@ export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps
           description: data.error || "Unknown error occurred",
         });
       }
-    } catch (error: any) {
-      console.error("Error running workflow:", error);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error running workflow:", err);
       toast.error("Failed to run workflow", {
-        description: error.message || "Network error occurred",
+        description: err.message || "Network error occurred",
       });
     } finally {
       setRunningWorkflowId(null);

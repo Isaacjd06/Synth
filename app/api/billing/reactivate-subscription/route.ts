@@ -82,8 +82,8 @@ export async function POST(req: Request) {
     );
 
     // 5. Update user in database
-    const renewalAt = (subscription as any).current_period_end
-      ? new Date((subscription as any).current_period_end * 1000)
+    const renewalAt = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
       : null;
 
     await prisma.user.update({
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/reactivate-subscription", error, {
       userId: (await auth())?.user?.id,
     });

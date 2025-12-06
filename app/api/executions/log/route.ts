@@ -1,8 +1,14 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+
+interface ExecutionLogRequestBody {
+  workflow_id: string;
+  input_data?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+}
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +18,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as ExecutionLogRequestBody;
 
     const workflowId = body.workflow_id;
     const inputData = body.input_data ?? body.input ?? {};
@@ -38,11 +44,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, saved });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("EXECUTION LOG ERROR:", error);
 
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 export async function logAudit(
   action: string,
   userId?: string | null,
-  metadata?: any,
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   try {
     await prisma.auditLog.create({

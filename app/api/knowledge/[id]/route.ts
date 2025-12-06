@@ -78,10 +78,10 @@ export async function PUT(
       ok: true,
       item: updatedItem,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PUT /api/knowledge/[id] error:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

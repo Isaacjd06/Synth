@@ -6,12 +6,18 @@ import Badge from "@/components/ui/Badge";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatDateTime, formatStatus } from "@/lib/utils";
 
+interface ExecutionOutputData {
+  error?: string;
+  details?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 interface Execution {
   id: string;
   workflow_id: string;
   user_id: string;
-  input_data: any;
-  output_data: any;
+  input_data: Record<string, unknown> | null;
+  output_data: ExecutionOutputData | null;
   status?: string | null;
   pipedream_execution_id?: string | null;
   created_at: string;

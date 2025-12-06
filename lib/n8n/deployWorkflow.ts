@@ -17,7 +17,7 @@ import { N8nWorkflow } from "../workflow/builder";
 
 export type DeployResult =
   | { ok: true; workflowId: number }
-  | { ok: false; error: string; details?: any };
+  | { ok: false; error: string; details?: unknown };
 
 /**
  * Deploy an n8n workflow by POSTing it to the n8n REST API.
@@ -72,11 +72,12 @@ export async function deployWorkflow(
       ok: true,
       workflowId: result.id,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err as { message?: string };
     return {
       ok: false,
       error: "Network or fetch error while deploying workflow to n8n.",
-      details: err?.message || err,
+      details: error?.message || err,
     };
   }
 }

@@ -187,11 +187,12 @@ Return ONLY valid JSON matching the exact structure specified.`;
       ok: true,
       blueprint: validationResult.data,
     };
-  } catch (error: any) {
-    console.error("Error generating workflow blueprint with OpenAI:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Error generating workflow blueprint with OpenAI:", err);
     return {
       ok: false,
-      error: error.message || "Failed to generate workflow blueprint",
+      error: err.message || "Failed to generate workflow blueprint",
     };
   }
 }
@@ -311,11 +312,12 @@ Return ONLY valid JSON matching the exact structure specified.`;
       ok: true,
       blueprint: validationResult.data,
     };
-  } catch (error: any) {
-    console.error("Error generating workflow blueprint with Anthropic:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Error generating workflow blueprint with Anthropic:", err);
     return {
       ok: false,
-      error: error.message || "Failed to generate workflow blueprint",
+      error: err.message || "Failed to generate workflow blueprint",
     };
   }
 }
@@ -435,8 +437,9 @@ Return ONLY a JSON object with this structure:
       intent,
       confidence: parsed.confidence,
     };
-  } catch (error: any) {
-    console.error("Error detecting intent with OpenAI:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Error detecting intent with OpenAI:", err);
     // Fallback to keyword matching
     return detectIntentWithKeywords(message);
   }
@@ -520,8 +523,9 @@ Return ONLY a JSON object: {"intent": "category", "confidence": 0.0-1.0}`;
       intent,
       confidence: parsed.confidence,
     };
-  } catch (error: any) {
-    console.error("Error detecting intent with Anthropic:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Error detecting intent with Anthropic:", err);
     // Fallback to keyword matching
     return detectIntentWithKeywords(message);
   }

@@ -37,7 +37,14 @@ export async function GET(req: Request) {
     }
 
     // 3. Build response object
-    const response: any = {
+    const response: {
+      has_customer: boolean;
+      has_subscription: boolean;
+      has_payment_method: boolean;
+      subscription: Record<string, unknown> | null;
+      payment_method: Record<string, unknown> | null;
+      upcoming_invoice: Record<string, unknown> | null;
+    } = {
       has_customer: !!user.stripeCustomerId,
       has_subscription: !!user.stripeSubscriptionId,
       has_payment_method: !!user.stripePaymentMethodId,
@@ -58,18 +65,18 @@ export async function GET(req: Request) {
           status: subscription.status,
           plan: user.plan,
           add_ons: user.addOns || [],
-          current_period_start: (subscription as any).current_period_start
-            ? new Date((subscription as any).current_period_start * 1000)
+          current_period_start: subscription.current_period_start
+            ? new Date(subscription.current_period_start * 1000)
             : null,
-          current_period_end: (subscription as any).current_period_end
-            ? new Date((subscription as any).current_period_end * 1000)
+          current_period_end: subscription.current_period_end
+            ? new Date(subscription.current_period_end * 1000)
             : null,
           cancel_at_period_end: subscription.cancel_at_period_end,
           trial_end: subscription.trial_end
             ? new Date(subscription.trial_end * 1000)
             : null,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error fetching subscription:", error);
       }
     }
@@ -91,7 +98,7 @@ export async function GET(req: Request) {
             exp_year: paymentMethod.card.exp_year,
           };
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error fetching payment method:", error);
       }
     }
@@ -115,19 +122,19 @@ export async function GET(req: Request) {
               : null,
           };
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error fetching upcoming invoice:", error);
       }
     }
 
     // 7. Return billing info
     return NextResponse.json(response, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/info", error, {
       userId: (await auth())?.user?.id,
     });
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

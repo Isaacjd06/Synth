@@ -58,8 +58,9 @@ export async function authenticateUser(): Promise<NextResponse | AuthResult> {
         isSystemUser: false,
         hasValidSubscription: accessInfo.hasFullAccess,
       };
-    } catch (error: any) {
-      logError("lib/auth-helpers (API key auth)", error, {
+    } catch (error: unknown) {
+      const err = error as Error;
+      logError("lib/auth-helpers (API key auth)", err, {
         hasApiKey: !!apiKey,
       });
       return NextResponse.json(
@@ -87,8 +88,9 @@ export async function authenticateUser(): Promise<NextResponse | AuthResult> {
       isSystemUser: false,
       hasValidSubscription: accessInfo.hasFullAccess,
     };
-  } catch (error: any) {
-    logError("lib/auth-helpers (NextAuth session)", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    logError("lib/auth-helpers (NextAuth session)", err);
     return NextResponse.json(
       { error: "Authentication error" },
       { status: 500 },
@@ -153,8 +155,9 @@ export async function authenticateAndCheckSubscription(): Promise<
         isSystemUser: false,
         hasValidSubscription: true,
       };
-    } catch (error: any) {
-      logError("lib/auth-helpers (API key auth)", error, {
+    } catch (error: unknown) {
+      const err = error as Error;
+      logError("lib/auth-helpers (API key auth)", err, {
         hasApiKey: !!apiKey,
       });
       return NextResponse.json(
@@ -185,8 +188,9 @@ export async function authenticateAndCheckSubscription(): Promise<
       isSystemUser: false,
       hasValidSubscription: true,
     };
-  } catch (error: any) {
-    logError("lib/auth-helpers (NextAuth session)", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    logError("lib/auth-helpers (NextAuth session)", err);
     return NextResponse.json(
       { error: "Authentication error" },
       { status: 500 },

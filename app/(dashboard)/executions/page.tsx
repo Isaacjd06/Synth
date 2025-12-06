@@ -20,8 +20,8 @@ export default async function ExecutionsPage() {
     id: string;
     workflow_id: string;
     user_id: string;
-    input_data: any;
-    output_data: any;
+    input_data: Record<string, unknown> | null;
+    output_data: Record<string, unknown> | null;
     status: string | null;
     pipedream_execution_id: string | null;
     created_at: Date;
@@ -53,9 +53,10 @@ export default async function ExecutionsPage() {
       },
       take: 50, // Limit to 50 most recent
     });
-  } catch (err: any) {
-    console.error("Error fetching executions:", err);
-    error = err.message || "Failed to load executions";
+  } catch (err: unknown) {
+    const e = err as Error;
+    console.error("Error fetching executions:", e);
+    error = e.message || "Failed to load executions";
   }
 
   return (

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * Synth ↔ n8n Integration Test Suite
  * Tests the three main integration routes:

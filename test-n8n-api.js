@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Synth n8n API Connection Test
  * Purpose: Verify that Synth can communicate with n8n via REST API

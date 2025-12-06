@@ -35,12 +35,16 @@ const ADDON_MAP: Record<
   },
 };
 
+interface PurchaseAddonRequestBody {
+  addon: string;
+}
+
 /**
  * POST /api/billing/purchase-addon
- * 
+ *
  * Purchases a one-time add-on for the authenticated user.
  * Charges the customer's default payment method immediately.
- * 
+ *
  * Request body:
  * {
  *   "addon": "rapid_booster" | "performance_turbo" | "business_jumpstart" | "persona_training" | "unlimited_knowledge"
@@ -68,7 +72,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as PurchaseAddonRequestBody;
     const { addon } = body;
 
     if (!addon) {
@@ -247,13 +251,13 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/purchase-addon", error, {
       userId: (await auth())?.user?.id,
     });
 
     // Handle Stripe-specific errors
-    if (error.type === "StripeCardError") {
+    if (error && typeof error === 'object' && 'type' in error && error.type === "StripeCardError") {
       return NextResponse.json(
         {
           success: false,

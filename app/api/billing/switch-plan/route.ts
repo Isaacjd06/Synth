@@ -23,16 +23,20 @@ const PLAN_PRICE_MAP_YEARLY: Record<string, string> = {
   agency: process.env.STRIPE_AGENCY_YEARLY_PRICE_ID || "",
 };
 
+interface SwitchPlanRequestBody {
+  newPlan: string;
+}
+
 /**
  * POST /api/billing/switch-plan
- * 
+ *
  * Switches the user's subscription to a new plan.
- * 
+ *
  * Request body:
  * {
  *   "newPlan": "starter" | "pro" | "agency"
  * }
- * 
+ *
  * Note: Uses proration_behavior: "none" to avoid immediate charges.
  * Changes will apply from the next billing period to prevent double-charging.
  */
@@ -68,7 +72,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as SwitchPlanRequestBody;
     const { newPlan } = body;
 
     if (!newPlan) {
@@ -185,8 +189,8 @@ export async function POST(req: Request) {
     );
 
     // 8. Extract renewal date from current_period_end
-    const renewalAt = (updatedSubscription as any).current_period_end
-      ? new Date((updatedSubscription as any).current_period_end * 1000)
+    const renewalAt = updatedSubscription.current_period_end
+      ? new Date(updatedSubscription.current_period_end * 1000)
       : null;
 
     // 9. Update Prisma with new plan and status
@@ -207,14 +211,14 @@ export async function POST(req: Request) {
         plan: newPlanPriceId,
         plan_name: newPlan,
         renewal_at: renewalAt?.toISOString() || null,
-        current_period_end: (updatedSubscription as any).current_period_end
-          ? new Date((updatedSubscription as any).current_period_end * 1000).toISOString()
+        current_period_end: updatedSubscription.current_period_end
+          ? new Date(updatedSubscription.current_period_end * 1000).toISOString()
           : null,
         message: "Plan change will take effect at the next billing period",
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/switch-plan", error, {
       userId,
     });
