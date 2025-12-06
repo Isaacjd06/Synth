@@ -108,21 +108,21 @@ export async function POST(req: Request) {
         { status: 201 }
       );
     } catch (error) {
-      // Pipedream API call failed - keep workflow in database but mark as inactive
+      // Workflow engine API call failed - keep workflow in database but mark as inactive
       pipedreamError =
         error instanceof PipedreamError
           ? error.message
           : error instanceof Error
           ? error.message
-          : "Unknown Pipedream API error";
+          : "Unknown workflow execution error";
 
-      console.error("Pipedream API error:", pipedreamError, error);
+      console.error("Workflow engine API error:", pipedreamError, error);
 
-      // Update workflow to mark it as inactive due to Pipedream error
+      // Update workflow to mark it as inactive due to workflow engine error
       const erroredWorkflow = await prisma.workflows.update({
         where: { id: workflow.id },
         data: {
-          active: false, // Mark as inactive since Pipedream creation failed
+          active: false, // Mark as inactive since workflow engine creation failed
         },
       });
 
@@ -130,8 +130,8 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Workflow created in database but failed to create in Pipedream",
-          pipedream_error: pipedreamError,
+          error: "Workflow created but failed to deploy",
+          workflow_error: pipedreamError,
           workflow: {
             id: erroredWorkflow.id,
             name: erroredWorkflow.name,

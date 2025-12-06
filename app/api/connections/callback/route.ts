@@ -53,7 +53,7 @@ export async function GET(req: Request) {
     
     if (!PIPEDREAM_API_KEY) {
       return NextResponse.json(
-        { error: "Pipedream API key not configured" },
+        { error: "Integration service not configured" },
         { status: 500 }
       );
     }

@@ -67,11 +67,6 @@ export default async function WorkflowDetailPage({
                   Inactive
                 </Badge>
               )}
-              {workflow.n8n_workflow_id && (
-                <span className="text-sm text-gray-500 font-mono">
-                  Pipedream ID: {workflow.n8n_workflow_id}
-                </span>
-              )}
             </div>
           </div>
           <WorkflowRunButton workflowId={workflow.id} n8nWorkflowId={workflow.n8n_workflow_id} />

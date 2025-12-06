@@ -79,13 +79,13 @@ export async function POST(
       );
     }
 
-    // 4. Check if workflow has a Pipedream ID
+    // 4. Check if workflow has a workflow engine ID
     if (!workflow.n8n_workflow_id) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Workflow does not have a Pipedream workflow ID. Please create the workflow in Pipedream first.",
+            "Workflow is not activated. Please activate the workflow first.",
         },
         { status: 400 },
       );
@@ -104,8 +104,8 @@ export async function POST(
         return NextResponse.json(
           {
             ok: false,
-            error: "Failed to run workflow in Pipedream",
-            pipedream_error: error.message,
+            error: "Failed to run workflow",
+            workflow_error: error.message,
           },
           { status: 500 },
         );
@@ -159,11 +159,9 @@ export async function POST(
           input_data: execution.input_data,
           output_data: execution.output_data,
           status: execution.status,
-          pipedream_execution_id: execution.pipedream_execution_id,
           created_at: execution.created_at,
           finished_at: execution.finished_at,
         },
-        pipedream_execution: pipedreamExecution,
       },
       { status: 201 },
     );

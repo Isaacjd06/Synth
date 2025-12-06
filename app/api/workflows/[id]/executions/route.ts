@@ -56,7 +56,7 @@ export async function GET(
       return NextResponse.json(
         {
           ok: false,
-          error: "Workflow does not have a Pipedream workflow ID. Please create the workflow in Pipedream first.",
+          error: "Workflow is not activated. Please activate the workflow first.",
         },
         { status: 400 }
       );
@@ -71,8 +71,8 @@ export async function GET(
         return NextResponse.json(
           {
             ok: false,
-            error: "Failed to fetch executions from Pipedream",
-            pipedream_error: error.message,
+            error: "Failed to fetch executions",
+            workflow_error: error.message,
           },
           { status: 500 }
         );
@@ -85,7 +85,6 @@ export async function GET(
       {
         ok: true,
         workflow_id: workflow.id,
-        pipedream_workflow_id: workflow.n8n_workflow_id,
         executions: executions.map((exec) => ({
           id: exec.id,
           workflow_id: exec.workflow_id,

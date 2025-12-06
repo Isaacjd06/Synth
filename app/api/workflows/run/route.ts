@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Get Pipedream workflow ID (stored in n8n_workflow_id field temporarily)
+    // 2. Get workflow engine ID (stored in n8n_workflow_id field temporarily)
     const pipedreamWorkflowId = workflow.n8n_workflow_id;
 
     if (!pipedreamWorkflowId) {
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Execute workflow in Pipedream using wrapper with proper error handling
+    // 3. Execute workflow using wrapper with proper error handling
     const runResult = await runWorkflow(pipedreamWorkflowId, inputData || {});
 
     if (!runResult.ok) {
@@ -175,7 +175,17 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { ok: true, message: "Workflow executed", execution },
+      {
+        ok: true,
+        message: "Workflow executed",
+        execution: {
+          id: executionRecord.id,
+          workflow_id: executionRecord.workflow_id,
+          status: executionRecord.status,
+          started_at: executionRecord.created_at,
+          finished_at: executionRecord.finished_at,
+        },
+      },
       { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   } catch (err: unknown) {

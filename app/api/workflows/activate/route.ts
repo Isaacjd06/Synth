@@ -90,13 +90,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Deploy to Pipedream (using WorkflowPlan directly, no n8n conversion)
+    // 3. Deploy workflow (using WorkflowPlan directly, no n8n conversion)
     const deploy = await deployWorkflow(plan);
 
     if (!deploy.ok) {
       return NextResponse.json(
         {
-          error: "Failed to deploy workflow to Pipedream.",
+          error: "Failed to deploy workflow.",
           details: deploy.details || deploy.error,
         },
         { status: 500 },
@@ -127,7 +127,6 @@ export async function POST(req: Request) {
       {
         success: true,
         message: "Workflow activated successfully.",
-        workflow_id: pipedreamWorkflowId,
       },
       { status: 200 },
     );

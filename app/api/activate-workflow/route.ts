@@ -59,9 +59,8 @@ export async function POST(request: NextRequest) {
     // Check if workflow is already active
     if (workflow.active && workflow.n8n_workflow_id) {
       return NextResponse.json(
-        { 
-          message: "Workflow is already active",
-          workflow_id: workflow.n8n_workflow_id // This field temporarily stores Pipedream ID
+        {
+          message: "Workflow is already active"
         },
         { status: 200 }
       );
@@ -113,13 +112,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Deploy to Pipedream
+    // Deploy workflow
     const deploy = await deployWorkflow(plan);
 
     if (!deploy.ok) {
       return NextResponse.json(
         {
-          error: "Failed to deploy workflow to Pipedream.",
+          error: "Failed to deploy workflow.",
           details: deploy.details || deploy.error,
         },
         { status: 500 }
@@ -150,8 +149,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      message: "Workflow activated",
-      workflow_id: pipedreamWorkflowId,
+      message: "Workflow activated successfully"
     });
   } catch (error) {
     console.error("Activate workflow error:", error);

@@ -130,11 +130,6 @@ export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps
                     Inactive
                   </Badge>
                 )}
-                {workflow.n8n_workflow_id && (
-                  <div className="mt-1 text-xs text-gray-500 font-mono">
-                    PD: {workflow.n8n_workflow_id.slice(0, 8)}...
-                  </div>
-                )}
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-2">
