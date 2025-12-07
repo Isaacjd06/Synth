@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { generateWorkflowBlueprint } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { createWorkflow, PipedreamError } from "@/lib/pipedream";
 import { z } from "zod";
 
@@ -66,8 +67,8 @@ export async function POST(req: Request) {
         name: blueprint.name,
         description: blueprint.description || null,
         intent: intent,
-        trigger: blueprint.trigger as Record<string, unknown>, // Store as JSON
-        actions: blueprint.actions as Array<Record<string, unknown>>, // Store as JSON
+        trigger: blueprint.trigger as Prisma.InputJsonValue, // Store as JSON
+        actions: blueprint.actions as Prisma.InputJsonValue, // Store as JSON
         active: true,
       },
     });

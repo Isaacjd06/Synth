@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logUsage } from "@/lib/usage";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
         context_type,
         content,
         relevance_score: relevance_score || null,
-        metadata: metadata || null,
+        metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
         last_accessed: new Date(),
       },
     });

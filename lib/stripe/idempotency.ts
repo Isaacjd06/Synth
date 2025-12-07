@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * Checks if a Stripe event has already been processed.
@@ -32,7 +33,7 @@ export async function checkAndStoreStripeEvent(
       data: {
         stripe_event_id: eventId,
         type,
-        data,
+        data: data as Prisma.InputJsonValue,
         processed: false,
       },
     });

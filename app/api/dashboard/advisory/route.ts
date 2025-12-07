@@ -14,7 +14,26 @@ export async function GET() {
   try {
     const authResult = await authenticateWithAccessInfo();
     if (authResult instanceof NextResponse) {
-      return authResult; // Returns 401
+      // Ensure auth errors also return proper JSON structure
+      // Check if it's already JSON, if not, wrap it
+      const contentType = authResult.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return authResult; // Already JSON, return as-is
+      }
+      // If somehow not JSON, return proper JSON structure
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unauthorized",
+          insights: [],
+        },
+        { 
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     const { userId, accessInfo } = authResult;
@@ -24,6 +43,10 @@ export async function GET() {
       return NextResponse.json({
         ok: true,
         insights: [],
+      }, {
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
     }
 
@@ -186,11 +209,11 @@ export async function GET() {
       await prisma.advisoryInsight.createMany({
         data: insights.map((insight) => ({
           user_id: userId,
-          source_type: insight.sourceType,
-          title: insight.title,
-          body: insight.body,
-          priority: insight.priority || "medium",
-          category: insight.category,
+          source_type: insight.sourceType as string,
+          title: insight.title as string,
+          body: insight.body as string,
+          priority: (insight.priority as string) || "medium",
+          category: insight.category as string,
         })),
       });
     }
@@ -202,15 +225,27 @@ export async function GET() {
         ...insight,
         createdAt: new Date(),
       })),
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
   } catch (error: unknown) {
     logError("app/api/dashboard/advisory", error);
+    // Always return JSON, even on unexpected errors
+    // This prevents Next.js from returning HTML error pages
     return NextResponse.json(
       {
         ok: false,
         error: error instanceof Error ? error.message : "Internal server error",
+        insights: [],
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 }

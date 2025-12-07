@@ -166,7 +166,7 @@ export function blueprintToN8nWorkflow(blueprint: WorkflowBlueprint): N8nWorkflo
     const nodeId = `action_${index}`;
     const actionNode: N8nWorkflowNode = {
       id: nodeId,
-      name: action.config.name || `Action ${index + 1}`,
+      name: (action.config.name as string) || `Action ${index + 1}`,
       type: mapActionType(action.type),
       typeVersion: 1,
       position: [250 + (index + 1) * 200, 300],

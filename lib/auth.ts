@@ -4,9 +4,13 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import type { Adapter } from "next-auth/adapters";
 import { logAudit } from "@/lib/audit";
-import { stripe } from "@/lib/stripe";
 import { logError } from "@/lib/error-logger";
 import { validateEnvOrThrow } from "@/lib/env";
+import {
+  setupUserAfterLogin,
+  ensureStripeCustomer,
+  isNewUser,
+} from "@/lib/auth-user-setup";
 
 // Validate environment variables at module load time
 // This ensures the app fails fast if required env vars are missing
@@ -34,49 +38,54 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
-      // Auto-create Stripe customer on first login if not exists
-      if (user?.email) {
-        try {
-          // Query user from database to check stripe_customer_id
-          // Use user.id if available (from adapter), otherwise query by email
-          const dbUser = user?.id
-            ? await prisma.user.findUnique({
-                where: { id: user.id },
-                select: { id: true, email: true, stripeCustomerId: true },
-              })
-            : await prisma.user.findUnique({
-                where: { email: user.email },
-                select: { id: true, email: true, stripeCustomerId: true },
-              });
-
-          // Create Stripe customer if user exists but doesn't have one
-          if (dbUser && !dbUser.stripeCustomerId && dbUser.email) {
-            const customer = await stripe.customers.create({
-              email: dbUser.email,
-              metadata: { userId: dbUser.id },
+      // Always allow sign-in - PrismaAdapter will create the user if needed
+      // User profile setup happens asynchronously after adapter creates user
+      if (user?.email && account?.provider === "google") {
+        // Queue user setup to run after adapter creates user
+        // This ensures we capture Google profile data (avatar, google_id, etc.)
+        setTimeout(async () => {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { email: user.email! },
+              select: {
+                id: true,
+                created_at: true,
+                trialEndsAt: true,
+                subscriptionStatus: true,
+              },
             });
 
-            // Update user with Stripe customer ID
-            await prisma.user.update({
-              where: { id: dbUser.id },
-              data: { stripeCustomerId: customer.id },
+            if (dbUser) {
+              const isNew =
+                dbUser.created_at &&
+                new Date().getTime() - new Date(dbUser.created_at).getTime() < 30000;
+
+              await setupUserAfterLogin(
+                dbUser.id,
+                {
+                  provider: "google",
+                  providerAccountId: account.providerAccountId,
+                },
+                {
+                  picture: user.image || (profile as { picture?: string })?.picture,
+                  email_verified: true, // Google emails are verified
+                },
+                isNew
+              );
+
+              await ensureStripeCustomer(dbUser.id, user.email!);
+            }
+          } catch (error) {
+            // Log but don't block - will retry on next login or session
+            logError("lib/auth (signIn - async user setup)", error as Error, {
+              email: user.email,
             });
           }
-        } catch (error: unknown) {
-          const err = error as Error;
-          // Log error but don't block login flow
-          logError("lib/auth (signIn - Stripe customer creation)", err, {
-            email: user.email,
-            userId: user?.id,
-          });
-          // Continue with sign-in even if Stripe customer creation fails
-        }
+        }, 1000); // Wait 1 second for adapter to create user
       }
-
-      // Always allow sign-in
       return true;
     },
-    async session({ session, user }) {
+    async session({ session, user, trigger }) {
       if (session.user && user) {
         session.user.id = user.id;
         // Populate extended user fields from database
@@ -95,6 +104,54 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.trialEndsAt = user.trialEndsAt;
         session.user.addOns = user.addOns;
         session.user.stripePaymentMethodId = user.stripePaymentMethodId;
+
+        // Setup user profile data and trial after login (runs asynchronously)
+        // Fetch account info for Google profile data and set up user
+        Promise.all([
+          // Get Google account info and set up user profile
+          prisma.account
+            .findFirst({
+              where: {
+                userId: user.id,
+                provider: "google",
+              },
+              select: {
+                providerAccountId: true,
+              },
+            })
+            .then(async (accountData) => {
+              const isNew = await isNewUser(user.id);
+              await setupUserAfterLogin(
+                user.id,
+                {
+                  provider: "google",
+                  providerAccountId: accountData?.providerAccountId || user.google_id || undefined,
+                },
+                {
+                  picture: user.avatar_url || session.user.image || undefined,
+                  email_verified: user.email_verified !== false, // Default to true for Google
+                },
+                isNew
+              );
+            }),
+          // Ensure Stripe customer exists
+          ensureStripeCustomer(user.id, session.user.email || ""),
+        ]).catch((error) => {
+          // Log but don't fail session creation - user setup is non-critical
+          logError("lib/auth (session callback - user setup)", error as Error, {
+            userId: user.id,
+          });
+        });
+
+        // Update last_login_at on every session (fire-and-forget)
+        prisma.user
+          .update({
+            where: { id: user.id },
+            data: { last_login_at: new Date() },
+          })
+          .catch(() => {
+            // Ignore errors - non-critical
+          });
 
         // Log login audit event (fire-and-forget to not slow down auth)
         logAudit("user.login", user.id, {

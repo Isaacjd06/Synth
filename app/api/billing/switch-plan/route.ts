@@ -25,6 +25,7 @@ const PLAN_PRICE_MAP_YEARLY: Record<string, string> = {
 
 interface SwitchPlanRequestBody {
   newPlan: string;
+  billingPeriod?: "monthly" | "yearly"; // Optional: defaults to "monthly" for backward compatibility
 }
 
 /**
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
 
     // 2. Parse request body
     const body = await req.json() as SwitchPlanRequestBody;
-    const { newPlan } = body;
+    const { newPlan, billingPeriod = "monthly" } = body;
 
     if (!newPlan) {
       return NextResponse.json(
@@ -86,14 +87,29 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Map newPlan to Stripe price ID (monthly only)
-    const newPlanPriceId = PLAN_PRICE_MAP_MONTHLY[newPlan];
+    // Validate billing period
+    if (billingPeriod !== "monthly" && billingPeriod !== "yearly") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "INVALID_BILLING_PERIOD",
+          message: "billingPeriod must be 'monthly' or 'yearly'",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Map newPlan to Stripe price ID based on billing period
+    const priceMap = billingPeriod === "yearly" ? PLAN_PRICE_MAP_YEARLY : PLAN_PRICE_MAP_MONTHLY;
+    const newPlanPriceId = priceMap[newPlan];
+    
     if (!newPlanPriceId) {
       return NextResponse.json(
         {
           success: false,
           code: "INVALID_PLAN",
-          message: `Invalid plan: ${newPlan}. Must be one of: starter, pro, agency`,
+          message: `Invalid plan: ${newPlan}. Must be one of: starter, pro, agency. ` +
+            `Also check if ${billingPeriod} billing is configured for this plan.`,
         },
         { status: 400 }
       );
@@ -133,7 +149,8 @@ export async function POST(req: Request) {
     }
 
     // Check if plan is already the same
-    if (user.plan === newPlanPriceId) {
+    // Note: user.plan now stores plan name (e.g., "pro"), not price ID
+    if (user.plan === newPlan) {
       return NextResponse.json(
         {
           success: false,
@@ -153,8 +170,9 @@ export async function POST(req: Request) {
     );
 
     // 6. Identify the existing subscription items
-    // The first item is typically the main plan subscription item
-    // Remaining items are subscription add-ons that must be preserved
+    // The first item is the main plan subscription item
+    // Note: Add-ons are NOT part of subscriptions - they are one-time purchases only
+    // Only plans (starter, pro, agency) support yearly billing
     const planItem = subscription.items.data[0];
 
     if (!planItem) {
@@ -168,16 +186,23 @@ export async function POST(req: Request) {
       );
     }
 
-    // Preserve add-ons (all items after the first one)
-    const addOnItems = subscription.items.data.slice(1);
+    // Check for any additional items that shouldn't be there
+    const additionalItems = subscription.items.data.slice(1);
+    if (additionalItems.length > 0) {
+      console.warn(
+        `Found ${additionalItems.length} unexpected subscription items that will be removed. ` +
+        `Add-ons should not be in subscriptions - they are one-time purchases only.`
+      );
+    }
 
-    // 7. Update subscription with new plan while preserving add-ons
+    // 7. Update subscription with new plan only (remove any additional items)
     // Using proration_behavior: "none" to avoid immediate charges
     // This means the plan change will take effect at the next billing period
     // This prevents double-charging users when switching plans
     const items: Stripe.SubscriptionUpdateParams.Item[] = [
       { id: planItem.id, price: newPlanPriceId }, // Update plan
-      ...addOnItems.map(item => ({ id: item.id })), // Preserve add-ons
+      // Remove any additional items by marking them as deleted
+      ...additionalItems.map(item => ({ id: item.id, deleted: true })),
     ];
 
     const updatedSubscription = await stripe.subscriptions.update(
@@ -186,7 +211,9 @@ export async function POST(req: Request) {
         items,
         proration_behavior: "none", // Changes apply from next billing period
       }
-    );
+    ) as Stripe.Subscription & {
+      current_period_end?: number;
+    };
 
     // 8. Extract renewal date from current_period_end
     const renewalAt = updatedSubscription.current_period_end
@@ -194,10 +221,12 @@ export async function POST(req: Request) {
       : null;
 
     // 9. Update Prisma with new plan and status
+    // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
+    // This is needed for feature-gate.ts to work correctly
     await prisma.user.update({
       where: { id: userId },
       data: {
-        plan: newPlanPriceId,
+        plan: newPlan, // Store plan name instead of price ID
         subscriptionStatus: updatedSubscription.status,
         subscriptionRenewalAt: renewalAt,
       },
@@ -210,6 +239,7 @@ export async function POST(req: Request) {
         status: updatedSubscription.status,
         plan: newPlanPriceId,
         plan_name: newPlan,
+        billing_period: billingPeriod,
         renewal_at: renewalAt?.toISOString() || null,
         current_period_end: updatedSubscription.current_period_end
           ? new Date(updatedSubscription.current_period_end * 1000).toISOString()
@@ -225,9 +255,11 @@ export async function POST(req: Request) {
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to switch plan. Please try again."
-        : error.message || "Internal server error";
+        : error instanceof Error
+        ? error.message
+        : "Internal server error";
 
     return NextResponse.json(
       {

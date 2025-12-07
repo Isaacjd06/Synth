@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateAndCheckSubscription } from '@/lib/auth-helpers';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { runWorkflow } from '@/lib/pipedream/runWorkflow';
 
 export async function POST(request: NextRequest) {
@@ -82,11 +83,11 @@ export async function POST(request: NextRequest) {
         data: {
           workflow_id: workflow.id,
           user_id: userId,
-          input_data: body.input || {},
+          input_data: (body.input as Prisma.InputJsonValue) || {},
           output_data: {
             error: runResult.error,
-            details: runResult.details as Record<string, unknown> | undefined,
-          } as Record<string, unknown>,
+            details: runResult.details,
+          } as Prisma.InputJsonValue,
           status: 'failure',
           pipedream_execution_id: null,
           finished_at: new Date(),
@@ -113,8 +114,8 @@ export async function POST(request: NextRequest) {
         data: {
           workflow_id: workflow.id,
           user_id: userId,
-          input_data: body.input || {},
-          output_data: (execution.data?.output || undefined) as Record<string, unknown> | undefined,
+          input_data: (body.input as Prisma.InputJsonValue) || {},
+          output_data: execution.data?.output ? (execution.data.output as Prisma.InputJsonValue) : undefined,
           status: executionStatus,
           pipedream_execution_id: execution.id || null,
           finished_at: execution.finished_at ? new Date(execution.finished_at) : null,

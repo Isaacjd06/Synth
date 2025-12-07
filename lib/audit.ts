@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * Logs an audit event to the database.
@@ -17,7 +18,7 @@ export async function logAudit(
       data: {
         user_id: userId || null,
         action,
-        metadata: metadata || null,
+        metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
       },
     });
   } catch (error) {

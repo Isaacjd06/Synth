@@ -219,7 +219,7 @@ function buildActionNode(
     type: n8nType,
     typeVersion: 1,
     position,
-    parameters: convertedParams,
+    parameters: convertedParams as Record<string, unknown>,
   };
 }
 

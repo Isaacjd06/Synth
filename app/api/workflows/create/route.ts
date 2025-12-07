@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { checkWorkflowLimit } from "@/lib/feature-gate";
@@ -87,8 +88,8 @@ export async function POST(req: Request) {
         name,
         description: description || "",
         intent: intent || "",
-        trigger: trigger || {},
-        actions: actions || [],
+        trigger: (trigger as Prisma.InputJsonValue) || {},
+        actions: (actions as Prisma.InputJsonValue) || [],
         active: false,
       },
     });

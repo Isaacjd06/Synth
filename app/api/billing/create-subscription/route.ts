@@ -24,22 +24,26 @@ const PLAN_PRICE_MAP_YEARLY: Record<string, string> = {
 };
 
 /**
- * Map subscription add-on identifiers to Stripe price IDs
- * Note: These are recurring subscription add-ons (billed monthly with subscription)
- * One-time add-ons (rapid_booster, performance_turbo, etc.) should be purchased separately
- * via /api/billing/purchase-addon and are NOT included here
+ * ⚠️ IMPORTANT: Add-ons are ONE-TIME purchases only
+ *
+ * All add-ons (rapid_booster, performance_turbo, etc.) are ONE-TIME purchases
+ * and must be purchased separately via /api/billing/purchase-addon.
+ *
+ * Add-ons are NOT part of subscriptions and do NOT have yearly billing options.
+ * Only the three main plans (starter, pro, agency) support yearly billing.
+ *
+ * If you need recurring subscription add-ons in the future:
+ * 1. Create recurring prices in Stripe Dashboard
+ * 2. Add env vars: STRIPE_ADDON_EXTRA_WORKFLOWS_PRICE_ID, etc.
+ * 3. Create a separate ADDON_PRICE_MAP for recurring add-ons
+ * 4. Update the billing page to support selection
  */
-const ADDON_PRICE_MAP: Record<string, string> = {
-  extra_workflows: process.env.STRIPE_ADDON_EXTRA_WORKFLOWS_PRICE_ID || "",
-  priority_support: process.env.STRIPE_ADDON_PRIORITY_SUPPORT_PRICE_ID || "",
-  white_label: process.env.STRIPE_ADDON_WHITE_LABEL_PRICE_ID || "",
-  // Add more recurring subscription add-ons as needed
-};
 
 interface CreateSubscriptionRequestBody {
   plan: string;
-  addons?: string[];
   coupon?: string;
+  billingPeriod?: "monthly" | "yearly"; // Optional: defaults to "monthly" for backward compatibility
+  // Note: addons parameter removed - add-ons are one-time purchases via /api/billing/purchase-addon
 }
 
 /**
@@ -50,8 +54,13 @@ interface CreateSubscriptionRequestBody {
  * Request body:
  * {
  *   "plan": "starter" | "pro" | "agency",
- *   "addons": string[]  // e.g. ["extra_workflows", "priority_support"]
+ *   "billingPeriod": "monthly" | "yearly"  // Optional, defaults to "monthly"
+ *   "coupon": string  // Optional coupon code
  * }
+ * 
+ * Note: Add-ons are NOT included in subscriptions. They are one-time purchases
+ * via /api/billing/purchase-addon and do NOT have yearly billing options.
+ * Only plans support yearly billing.
  */
 export async function POST(req: Request) {
   try {
@@ -84,7 +93,13 @@ export async function POST(req: Request) {
 
     // 2. Parse request body
     const body = await req.json() as CreateSubscriptionRequestBody;
-    const { plan, addons = [], coupon } = body;
+    const { plan, coupon, billingPeriod = "monthly" } = body;
+    
+    // Ignore addons if provided - they are one-time purchases only
+    // This ensures add-ons are never added to subscriptions
+    if ('addons' in body && Array.isArray(body.addons) && body.addons.length > 0) {
+      console.warn("Add-ons provided in create-subscription request are ignored. Add-ons must be purchased separately via /api/billing/purchase-addon");
+    }
 
     if (!plan) {
       return NextResponse.json(
@@ -97,14 +112,29 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Map plan string to Stripe price ID (monthly only)
-    const planPriceId = PLAN_PRICE_MAP_MONTHLY[plan];
+    // Validate billing period
+    if (billingPeriod !== "monthly" && billingPeriod !== "yearly") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "INVALID_BILLING_PERIOD",
+          message: "billingPeriod must be 'monthly' or 'yearly'",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Map plan string to Stripe price ID based on billing period
+    const priceMap = billingPeriod === "yearly" ? PLAN_PRICE_MAP_YEARLY : PLAN_PRICE_MAP_MONTHLY;
+    const planPriceId = priceMap[plan];
+    
     if (!planPriceId) {
       return NextResponse.json(
         {
           success: false,
           code: "INVALID_PLAN",
-          message: `Invalid plan: ${plan}. Must be one of: starter, pro, agency`,
+          message: `Invalid plan: ${plan}. Must be one of: starter, pro, agency. ` +
+            `Also check if ${billingPeriod} billing is configured for this plan.`,
         },
         { status: 400 }
       );
@@ -141,26 +171,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5. Build subscription items: plan + add-ons
-    // Note: Add-ons are added as additional subscription items for recurring billing
+    // 5. Build subscription items: plan only
+    // Add-ons are NOT included in subscriptions - they are one-time purchases only
+    // Only the three main plans (starter, pro, agency) support yearly billing
     const items: Stripe.SubscriptionCreateParams.Item[] = [
       { price: planPriceId, quantity: 1 },
     ];
-
-    // Map add-on identifiers to price IDs and add to subscription
-    // Note: For subscription add-ons, we use recurring price IDs
-    // For one-time add-ons, they should be purchased separately via purchase-addon
-    const validAddonIds: string[] = [];
-    for (const addonId of addons) {
-      const addonPriceId = ADDON_PRICE_MAP[addonId];
-      if (addonPriceId) {
-        items.push({ price: addonPriceId, quantity: 1 });
-        validAddonIds.push(addonId); // Store identifier, not price ID
-      } else {
-        // Log warning but don't fail - unknown add-ons are ignored
-        console.warn(`Unknown add-on identifier: ${addonId}`);
-      }
-    }
 
     // 6. Create subscription via Stripe
     // Since we're using SetupIntent to save payment methods first,
@@ -182,31 +198,38 @@ export async function POST(req: Request) {
       ];
     }
 
-    // Add trial period if configured
-    const trialDays = process.env.STRIPE_TRIAL_DAYS
-      ? parseInt(process.env.STRIPE_TRIAL_DAYS, 10)
-      : 0;
-    
-    if (trialDays > 0) {
-      subscriptionParams.trial_period_days = trialDays;
-    }
+    // Add 3-day free trial period
+    // All new subscriptions get a 3-day free trial
+    const TRIAL_DAYS = 3;
+    subscriptionParams.trial_period_days = TRIAL_DAYS;
 
-    const subscription = await stripe.subscriptions.create(subscriptionParams);
+    const subscription = await stripe.subscriptions.create(subscriptionParams) as Stripe.Subscription & {
+      current_period_end?: number;
+      trial_end?: number;
+    };
 
-    // 7. Extract renewal date from current_period_end
+    // 7. Extract renewal date and trial end date
     const renewalAt = subscription.current_period_end
       ? new Date(subscription.current_period_end * 1000)
       : null;
 
+    const trialEndsAt = subscription.trial_end
+      ? new Date(subscription.trial_end * 1000)
+      : null;
+
     // 8. Save to Prisma using camelCase field names
+    // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
+    // This is needed for feature-gate.ts to work correctly
+    // Note: addOns field is NOT updated here - add-ons are purchased separately
     await prisma.user.update({
       where: { id: userId },
       data: {
         stripeSubscriptionId: subscription.id,
-        plan: planPriceId,
+        plan: plan, // Store plan name (e.g., "pro") instead of price ID
         subscriptionStatus: subscription.status,
         subscriptionRenewalAt: renewalAt,
-        addOns: validAddonIds, // Store add-on identifiers (consistent with purchase-addon)
+        trialEndsAt: trialEndsAt, // Store 3-day trial end date
+        // addOns field is NOT updated - add-ons are one-time purchases via /api/billing/purchase-addon
       },
     });
 
@@ -217,11 +240,12 @@ export async function POST(req: Request) {
         status: subscription.status,
         plan: planPriceId,
         plan_name: plan,
-        addons: validAddonIds,
+        billing_period: billingPeriod,
         renewal_at: renewalAt?.toISOString() || null,
         trial_end: subscription.trial_end
           ? new Date(subscription.trial_end * 1000).toISOString()
           : null,
+        // Note: addons field removed - add-ons are purchased separately
       },
       { status: 200 }
     );
@@ -232,9 +256,11 @@ export async function POST(req: Request) {
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to create subscription. Please try again."
-        : error.message || "Internal server error";
+        : error instanceof Error
+        ? error.message
+        : "Internal server error";
 
     return NextResponse.json(
       {

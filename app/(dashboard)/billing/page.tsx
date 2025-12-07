@@ -6,21 +6,23 @@ import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-
 import { loadStripe } from "@stripe/stripe-js";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Check, CreditCard, AlertCircle, Loader2, Download, Calendar, X, RotateCcw } from "lucide-react";
+import SubscriptionSummary from "@/components/billing/SubscriptionSummary";
 
 // Initialize Stripe with publishable key
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""
 );
 
-// Define plans
+// Define plans (prices will be fetched from Stripe)
+// Note: Backend stores plan names as "starter", "pro", "agency"
+// Feature limits are defined in lib/feature-gate.ts
 const PLANS = [
   {
     id: "starter",
     name: "Starter",
     description: "Perfect for individuals getting started",
-    price: "$29",
     features: [
-      "5 workflows",
+      "3 active workflows",
       "Basic AI automation",
       "Community support",
       "Standard integrations",
@@ -28,11 +30,10 @@ const PLANS = [
   },
   {
     id: "pro",
-    name: "Pro",
+    name: "Growth",
     description: "For professionals and growing teams",
-    price: "$99",
     features: [
-      "Unlimited workflows",
+      "10 active workflows",
       "Advanced AI automation",
       "Priority support",
       "Custom integrations",
@@ -42,11 +43,11 @@ const PLANS = [
   },
   {
     id: "agency",
-    name: "Agency",
+    name: "Scale",
     description: "For agencies and large teams",
-    price: "$299",
     features: [
-      "Everything in Pro",
+      "40 active workflows",
+      "Everything in Growth",
       "White-label options",
       "Dedicated support",
       "Custom development",
@@ -88,9 +89,11 @@ interface BillingState {
   plan: string | null;
   subscriptionStatus: string | null;
   subscriptionRenewalAt: string | null;
+  trialEndsAt: string | null;
   addOns: string[];
   stripeCustomerId: string | null;
   hasPaymentMethod: boolean;
+  billingPeriod: "monthly" | "yearly" | null;
 }
 
 interface PaymentMethodDetails {
@@ -98,6 +101,33 @@ interface PaymentMethodDetails {
   last4: string;
   exp_month: number;
   exp_year: number;
+}
+
+interface Invoice {
+  id: string;
+  number?: string;
+  status: string;
+  created: number;
+  amount_paid: number;
+  currency: string;
+  hosted_invoice_url?: string;
+  invoice_pdf?: string;
+}
+
+interface PurchaseLog {
+  id: string;
+  addonId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  createdAt: string;
+}
+
+interface UpcomingInvoice {
+  amount_due: number;
+  currency: string;
+  period_start?: number;
+  period_end?: number;
 }
 
 // Payment Form Component (must be inside Elements)
@@ -198,16 +228,28 @@ export default function BillingPage() {
   const [purchasingAddon, setPurchasingAddon] = useState<string | null>(null);
   const [switchingPlan, setSwitchingPlan] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly");
-  const [purchaseLogs, setPurchaseLogs] = useState<unknown[]>([]);
-  const [invoices, setInvoices] = useState<unknown[]>([]);
+  const [purchaseLogs, setPurchaseLogs] = useState<PurchaseLog[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [upcomingInvoice, setUpcomingInvoice] = useState<unknown>(null);
+  const [upcomingInvoice, setUpcomingInvoice] = useState<UpcomingInvoice | null>(null);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [paymentMethodDetails, setPaymentMethodDetails] = useState<PaymentMethodDetails | null>(null);
   const [savePaymentMethodClientSecret, setSavePaymentMethodClientSecret] = useState<string | null>(null);
   const [showSavePaymentForm, setShowSavePaymentForm] = useState(false);
   const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
+  const [planPrices, setPlanPrices] = useState<{
+    monthly: Record<string, { amount: number; currency: string; price_id: string }>;
+    yearly: Record<string, { amount: number; currency: string; price_id: string }>;
+  } | null>(null);
+  const [checkoutDetails, setCheckoutDetails] = useState<{
+    subtotal: number;
+    tax: number;
+    total: number;
+    currency: string;
+    plan: { name: string; amount: number };
+    addons: Array<{ name: string; amount: number }>;
+  } | null>(null);
 
   const fetchBillingState = async () => {
     try {
@@ -224,25 +266,17 @@ export default function BillingPage() {
       setBillingState(data);
 
       // Set current plan if user has one
-      // The plan field contains the Stripe price ID, so we need to map it to plan identifier
+      // The plan field now contains the plan name (e.g., "pro", "starter", "agency")
       if (data.plan) {
-        const starterPriceId = process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID || "";
-        const proPriceId = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID || "";
-        const agencyPriceId = process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID || "";
-        const starterYearlyPriceId = process.env.NEXT_PUBLIC_STRIPE_STARTER_YEARLY_PRICE_ID || "";
-        const proYearlyPriceId = process.env.NEXT_PUBLIC_STRIPE_PRO_YEARLY_PRICE_ID || "";
-        const agencyYearlyPriceId = process.env.NEXT_PUBLIC_STRIPE_AGENCY_YEARLY_PRICE_ID || "";
-        
-        if (data.plan === starterPriceId || data.plan === starterYearlyPriceId) {
-          setSelectedPlan("starter");
-          if (data.plan === starterYearlyPriceId) setBillingInterval("yearly");
-        } else if (data.plan === proPriceId || data.plan === proYearlyPriceId) {
-          setSelectedPlan("pro");
-          if (data.plan === proYearlyPriceId) setBillingInterval("yearly");
-        } else if (data.plan === agencyPriceId || data.plan === agencyYearlyPriceId) {
-          setSelectedPlan("agency");
-          if (data.plan === agencyYearlyPriceId) setBillingInterval("yearly");
+        // Plan names are: "starter", "pro", "agency"
+        if (data.plan === "starter" || data.plan === "pro" || data.plan === "agency") {
+          setSelectedPlan(data.plan);
         }
+      }
+
+      // Set billing interval from API response
+      if (data.billingPeriod) {
+        setBillingInterval(data.billingPeriod);
       }
 
       // Set current add-ons
@@ -257,6 +291,90 @@ export default function BillingPage() {
       setLoading(false);
     }
   };
+
+  const fetchPlanPrices = async () => {
+    try {
+      const response = await fetch("/api/billing/prices");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.monthly && data.yearly) {
+          setPlanPrices({
+            monthly: data.monthly,
+            yearly: data.yearly,
+          });
+        }
+      }
+    } catch (err: unknown) {
+      // Log error but don't fail - prices are best effort
+      console.error("Failed to fetch plan prices:", err);
+    }
+  };
+
+  // Format price from Stripe (amount in cents)
+  const formatPrice = (amount: number | undefined, currency: string = "usd"): string => {
+    if (!amount) return "$0.00";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount / 100);
+  };
+
+  // Get plan price based on billing interval
+  const getPlanPrice = (planId: string, interval: "monthly" | "yearly"): { amount: number; currency: string } | null => {
+    if (!planPrices) return null;
+    const prices = interval === "yearly" ? planPrices.yearly : planPrices.monthly;
+    const price = prices[planId];
+    if (!price) return null;
+    return { amount: price.amount, currency: price.currency };
+  };
+
+  // Fetch checkout details with tax calculation when plan is selected
+  const fetchCheckoutDetails = useCallback(async (planId: string, customerLocation?: { country?: string; postal_code?: string; state?: string }) => {
+    if (!planId) {
+      setCheckoutDetails(null);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        plan: planId,
+        billingPeriod: billingInterval,
+      });
+
+      // Add customer location if provided for tax calculation
+      if (customerLocation?.country && customerLocation?.postal_code) {
+        params.append("country", customerLocation.country);
+        params.append("postal_code", customerLocation.postal_code);
+        if (customerLocation.state) {
+          params.append("state", customerLocation.state);
+        }
+      }
+
+      const response = await fetch(`/api/checkout/details?${params.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setCheckoutDetails({
+            subtotal: data.subtotal,
+            tax: data.tax,
+            total: data.total,
+            currency: data.currency,
+            plan: {
+              name: data.plan.name,
+              amount: data.plan.amount,
+            },
+            addons: data.addons.map((addon: { name: string; amount: number }) => ({
+              name: addon.name,
+              amount: addon.amount,
+            })),
+          });
+        }
+      }
+    } catch (err: unknown) {
+      console.error("Failed to fetch checkout details:", err);
+      // Don't set error - checkout details are optional
+    }
+  }, [billingInterval]);
 
   const fetchPurchaseLogs = async () => {
     try {
@@ -421,20 +539,8 @@ export default function BillingPage() {
     setSuccessMessage(null);
   };
 
-  const handleAddOnToggle = (addonId: string) => {
-    // Prevent selecting add-ons that are already owned (one-time purchases)
-    // These should not be included in subscription creation
-    if (billingState?.addOns.includes(addonId)) {
-      setError("This add-on is already owned and cannot be added to subscription");
-      return;
-    }
-
-    setSelectedAddOns((prev) =>
-      prev.includes(addonId)
-        ? prev.filter((id) => id !== addonId)
-        : [...prev, addonId]
-    );
-  };
+  // Note: handleAddOnToggle removed - add-ons are one-time purchases only
+  // Add-ons cannot be added to subscriptions, they must be purchased separately
 
   const handlePaymentSuccess = async (paymentMethodId: string) => {
     // If saving payment method (standalone, not for subscription)
@@ -522,20 +628,17 @@ export default function BillingPage() {
     setError(null);
 
     try {
-      // Filter out add-ons that are already owned (one-time purchases)
-      // These should not be included in subscription creation
-      const ownedAddons = billingState?.addOns || [];
-      const subscriptionAddons = selectedAddOns.filter(
-        (addonId) => !ownedAddons.includes(addonId)
-      );
+      // Add-ons are NOT included in subscriptions - they are one-time purchases only
+      // Only plans (starter, pro, agency) support yearly billing
+      // Add-ons must be purchased separately via /api/billing/purchase-addon
 
       const response = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: selectedPlan,
-          addons: subscriptionAddons,
-          billingInterval,
+          billingPeriod: billingInterval,
+          // Note: addons removed - they are one-time purchases only
         }),
       });
 
@@ -578,19 +681,17 @@ export default function BillingPage() {
     if (billingState?.hasPaymentMethod) {
       setIsSubmitting(true);
       try {
-        // Filter out add-ons that are already owned (one-time purchases)
-        // These should not be included in subscription creation
-        const ownedAddons = billingState?.addOns || [];
-        const subscriptionAddons = selectedAddOns.filter(
-          (addonId) => !ownedAddons.includes(addonId)
-        );
+        // Add-ons are NOT included in subscriptions - they are one-time purchases only
+        // Only plans (starter, pro, agency) support yearly billing
+        // Add-ons must be purchased separately via /api/billing/purchase-addon
 
         const response = await fetch("/api/billing/create-subscription", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             plan: selectedPlan,
-            addons: subscriptionAddons,
+            billingPeriod: billingInterval,
+            // Note: addons removed - they are one-time purchases only
           }),
         });
 
@@ -645,7 +746,7 @@ export default function BillingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           newPlan: newPlanId,
-          billingInterval,
+          billingPeriod: billingInterval,
         }),
       });
 
@@ -734,9 +835,10 @@ export default function BillingPage() {
     }
   };
 
-  // Fetch billing state on mount
+  // Fetch billing state and prices on mount
   useEffect(() => {
     fetchBillingState();
+    fetchPlanPrices();
     fetchPurchaseLogs();
     fetchInvoices();
   }, []);
@@ -786,6 +888,19 @@ export default function BillingPage() {
     }
   }, [showUpdatePaymentForm, updatePaymentClientSecret, billingState?.hasPaymentMethod, initializeUpdatePayment]);
 
+  // Fetch checkout details with tax when plan or billing interval changes
+  useEffect(() => {
+    // Only fetch for users without active subscriptions
+    const hasActiveSubscription = Boolean(
+      billingState?.subscriptionStatus &&
+      ["active", "trialing", "past_due", "cancels_at_period_end"].includes(billingState.subscriptionStatus)
+    );
+
+    if (selectedPlan && !hasActiveSubscription) {
+      fetchCheckoutDetails(selectedPlan);
+    }
+  }, [selectedPlan, billingInterval, billingState?.subscriptionStatus, fetchCheckoutDetails]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-8 flex items-center justify-center">
@@ -798,10 +913,29 @@ export default function BillingPage() {
   }
 
   const hasPaymentMethod = billingState?.hasPaymentMethod || false;
-  const hasSubscription = billingState?.subscriptionStatus &&
-    ["active", "trialing", "past_due", "cancels_at_period_end"].includes(billingState.subscriptionStatus);
+  const hasSubscription = Boolean(
+    billingState?.subscriptionStatus &&
+    ["active", "trialing", "past_due", "cancels_at_period_end"].includes(billingState.subscriptionStatus)
+  );
   const isPastDue = billingState?.subscriptionStatus === "past_due";
   const isCanceling = billingState?.subscriptionStatus === "cancels_at_period_end";
+  const isInTrial = Boolean(
+    billingState?.subscriptionStatus === "trialing" ||
+    (billingState?.trialEndsAt && new Date(billingState.trialEndsAt) > new Date())
+  );
+  
+  // Calculate days remaining in trial
+  const getTrialDaysRemaining = (): number | null => {
+    if (!billingState?.trialEndsAt) return null;
+    const trialEnd = new Date(billingState.trialEndsAt);
+    const now = new Date();
+    if (trialEnd <= now) return 0;
+    const diffTime = trialEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+  
+  const trialDaysRemaining = getTrialDaysRemaining();
 
   const handleCancelSubscription = async () => {
     if (!cancelReason.trim()) {
@@ -897,6 +1031,36 @@ export default function BillingPage() {
           <div className="bg-gradient-to-r from-red-900/30 to-red-800/20 border-2 border-red-500/50 backdrop-blur-sm text-red-300 p-4 rounded-xl flex items-start gap-3 shadow-lg">
             <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <span className="font-medium">{error}</span>
+          </div>
+        )}
+
+        {/* 3-Day Free Trial Banner */}
+        {isInTrial && trialDaysRemaining !== null && trialDaysRemaining > 0 && (
+          <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/30 border-2 border-blue-500 backdrop-blur-sm text-blue-200 p-6 rounded-xl flex items-start gap-4 shadow-2xl">
+            <div className="bg-blue-500/20 p-3 rounded-full">
+              <Calendar className="w-6 h-6 flex-shrink-0 text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-lg text-white">3-Day Free Trial Active</p>
+              <p className="text-sm mt-1 text-blue-200">
+                {trialDaysRemaining === 1 
+                  ? "Your trial ends tomorrow. Add a payment method to continue after the trial."
+                  : `You have ${trialDaysRemaining} days remaining in your free trial. Add a payment method to continue after the trial.`}
+              </p>
+              {billingState?.trialEndsAt && (
+                <p className="text-xs mt-2 text-blue-300">
+                  Trial ends: {new Date(billingState.trialEndsAt).toLocaleDateString()} at {new Date(billingState.trialEndsAt).toLocaleTimeString()}
+                </p>
+              )}
+              {!hasPaymentMethod && (
+                <button
+                  onClick={() => setShowSavePaymentForm(true)}
+                  className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-all duration-200 text-sm shadow-lg hover:shadow-blue-500/50"
+                >
+                  Add Payment Method
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1050,14 +1214,29 @@ export default function BillingPage() {
                 }`}>
                   {billingState.subscriptionStatus === "cancels_at_period_end" ? "Canceling" : 
                    billingState.subscriptionStatus === "past_due" ? "Past Due" :
+                   billingState.subscriptionStatus === "trialing" ? "Free Trial" :
                    billingState.subscriptionStatus?.toUpperCase() || "Unknown"}
                 </span>
+                {isInTrial && trialDaysRemaining !== null && trialDaysRemaining > 0 && (
+                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-600 text-white">
+                    {trialDaysRemaining} {trialDaysRemaining === 1 ? "day" : "days"} left
+                  </span>
+                )}
               </div>
 
               {/* Subscription Timeline */}
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold text-white">Subscription Timeline</h4>
                 <div className="space-y-2 text-sm">
+                  {isInTrial && billingState.trialEndsAt && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-blue-400" />
+                      <span className="text-gray-400">Trial ends:</span>
+                      <span className="text-blue-400 font-medium">
+                        {new Date(billingState.trialEndsAt).toLocaleDateString()} at {new Date(billingState.trialEndsAt).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-400">Started:</span>
@@ -1067,7 +1246,7 @@ export default function BillingPage() {
                         : "N/A"}
                     </span>
                   </div>
-                  {billingState.subscriptionRenewalAt && (
+                  {billingState.subscriptionRenewalAt && !isInTrial && (
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
                       <span className="text-gray-400">Next renewal:</span>
@@ -1131,7 +1310,8 @@ export default function BillingPage() {
         )}
 
         {/* Plan Selector - Only show if user has payment method or subscription */}
-        {(hasPaymentMethod || hasSubscription) && (
+        {Boolean(hasPaymentMethod || hasSubscription) && (
+        <>
         <div className="space-y-4">
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-bold text-white">Choose Your Plan</h2>
@@ -1219,19 +1399,32 @@ export default function BillingPage() {
                       <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
                       <div className="flex items-baseline justify-center gap-1">
                         <span className="text-5xl font-bold text-white">
-                          {billingInterval === "yearly" 
-                            ? `$${Math.round(parseInt(plan.price.replace("$", "")) * 12 * 0.8)}`
-                            : plan.price}
+                          {(() => {
+                            const price = getPlanPrice(plan.id, billingInterval);
+                            if (price) {
+                              return formatPrice(price.amount, price.currency);
+                            }
+                            // Fallback while loading
+                            return billingInterval === "yearly" ? "Loading..." : "Loading...";
+                          })()}
                         </span>
                         <span className="text-gray-400 text-lg">
                           {billingInterval === "yearly" ? "/year" : "/month"}
                         </span>
                       </div>
-                      {billingInterval === "yearly" && (
-                        <div className="text-xs text-gray-500 line-through">
-                          ${parseInt(plan.price.replace("$", "")) * 12}/year
-                        </div>
-                      )}
+                      {billingInterval === "yearly" && (() => {
+                        const monthlyPrice = getPlanPrice(plan.id, "monthly");
+                        const yearlyPrice = getPlanPrice(plan.id, "yearly");
+                        if (monthlyPrice && yearlyPrice) {
+                          const monthlyYearly = monthlyPrice.amount * 12;
+                          return (
+                            <div className="text-xs text-gray-500 line-through">
+                              {formatPrice(monthlyYearly, monthlyPrice.currency)}/year
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       <p className="text-sm text-gray-400">{plan.description}</p>
                     </div>
 
@@ -1288,10 +1481,12 @@ export default function BillingPage() {
             })}
           </div>
         </div>
+        </>
         )}
 
         {/* Add-ons Selector - Only show if user has payment method or subscription */}
-        {(hasPaymentMethod || hasSubscription) && (
+        {Boolean(hasPaymentMethod || hasSubscription) && (
+        <>
         <Card className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border-gray-700/50 shadow-xl">
           <CardHeader>
             <CardTitle className="text-white text-xl">Power-Ups & Add-ons</CardTitle>
@@ -1351,29 +1546,11 @@ export default function BillingPage() {
                       )}
 
                       {!hasSubscription && !isOwned && (
-                        <label className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800/70 transition-colors border border-gray-700 hover:border-gray-600">
-                          <input
-                            type="checkbox"
-                            checked={selectedAddOns.includes(addon.id)}
-                            onChange={() => handleAddOnToggle(addon.id)}
-                            className="w-5 h-5 text-blue-600 rounded border-gray-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
-                            disabled={isSubmitting || !!switchingPlan || !!purchasingAddon}
-                          />
-                          <span className={`text-sm font-medium transition-colors ${
-                            selectedAddOns.includes(addon.id)
-                              ? "text-blue-400"
-                              : "text-gray-300"
-                          }`}>
-                            {selectedAddOns.includes(addon.id) ? (
-                              <span className="flex items-center gap-2">
-                                <Check className="w-4 h-4" />
-                                Included in subscription
-                              </span>
-                            ) : (
-                              "Include in subscription"
-                            )}
-                          </span>
-                        </label>
+                        <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700 text-center">
+                          <p className="text-xs text-gray-500">
+                            Add-ons can be purchased after subscribing to a plan
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1382,6 +1559,7 @@ export default function BillingPage() {
             </div>
           </CardContent>
         </Card>
+        </>
         )}
 
         {/* Payment Element for Subscription (only shown if no payment method and not subscribed) */}
@@ -1486,15 +1664,15 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {invoices.map((invoice: Record<string, unknown>) => (
+                {invoices.map((invoice) => (
                   <div
-                    key={String(invoice.id)}
+                    key={invoice.id}
                     className="flex items-center justify-between p-4 border border-gray-700 rounded-lg bg-gray-900/50"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <span className="text-white font-medium">
-                          {String(invoice.number || invoice.id)}
+                          {invoice.number || invoice.id}
                         </span>
                         <span className={`px-2 py-1 rounded text-xs ${
                           invoice.status === "paid"
@@ -1503,15 +1681,15 @@ export default function BillingPage() {
                             ? "bg-yellow-600 text-white"
                             : "bg-red-600 text-white"
                         }`}>
-                          {typeof invoice.status === "string" ? invoice.status.toUpperCase() : "UNKNOWN"}
+                          {invoice.status.toUpperCase()}
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-gray-400">
-                        {invoice.created && typeof invoice.created === "number" && new Date(invoice.created * 1000).toLocaleDateString()} • {formatCurrency(typeof invoice.amount_paid === "number" ? invoice.amount_paid : 0, typeof invoice.currency === "string" ? invoice.currency : "usd")}
+                        {new Date(invoice.created * 1000).toLocaleDateString()} • {formatCurrency(invoice.amount_paid, invoice.currency)}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {invoice.hosted_invoice_url && typeof invoice.hosted_invoice_url === "string" && (
+                      {invoice.hosted_invoice_url && (
                         <a
                           href={invoice.hosted_invoice_url}
                           target="_blank"
@@ -1521,7 +1699,7 @@ export default function BillingPage() {
                           View
                         </a>
                       )}
-                      {invoice.invoice_pdf && typeof invoice.invoice_pdf === "string" && (
+                      {invoice.invoice_pdf && (
                         <a
                           href={invoice.invoice_pdf}
                           target="_blank"
@@ -1549,19 +1727,19 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {purchaseLogs.map((log: Record<string, unknown>) => {
+                {purchaseLogs.map((log) => {
                   const addon = ADDONS.find((a) => a.id === log.addonId);
                   return (
                     <div
-                      key={String(log.id)}
+                      key={log.id}
                       className="flex items-center justify-between p-4 border border-gray-700 rounded-lg bg-gray-900/50"
                     >
                       <div>
                         <div className="text-white font-medium">
-                          {addon?.name || String(log.addonId)}
+                          {addon?.name || log.addonId}
                         </div>
                         <div className="text-sm text-gray-400 mt-1">
-                          {typeof log.createdAt === "string" && new Date(log.createdAt).toLocaleDateString()} • {formatCurrency(typeof log.amount === "number" ? log.amount : 0, typeof log.currency === "string" ? log.currency : "usd")}
+                          {new Date(log.createdAt).toLocaleDateString()} • {formatCurrency(log.amount, log.currency)}
                         </div>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs ${
@@ -1569,7 +1747,7 @@ export default function BillingPage() {
                           ? "bg-green-600 text-white"
                           : "bg-red-600 text-white"
                       }`}>
-                        {typeof log.status === "string" ? log.status.toUpperCase() : "UNKNOWN"}
+                        {log.status.toUpperCase()}
                       </span>
                     </div>
                   );
@@ -1577,6 +1755,26 @@ export default function BillingPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Subscription Summary with Tax (only shown if no subscription and plan selected) */}
+        {!hasSubscription && selectedPlan && checkoutDetails && (
+          <div className="max-w-md mx-auto">
+            <SubscriptionSummary
+              selectedPlan={{
+                name: checkoutDetails.plan.name,
+                amount: checkoutDetails.plan.amount,
+              }}
+              selectedAddOns={checkoutDetails.addons.map((addon) => ({
+                name: addon.name,
+                amount: addon.amount,
+              }))}
+              subtotal={checkoutDetails.subtotal}
+              tax={checkoutDetails.tax}
+              totalPrice={checkoutDetails.total}
+              currency={checkoutDetails.currency}
+            />
+          </div>
         )}
 
         {/* Confirm & Subscribe Button (only shown if no subscription) */}
@@ -1654,17 +1852,14 @@ export default function BillingPage() {
                 <div className="flex justify-between">
                   <span className="text-gray-400">Amount:</span>
                   <span className="text-white font-medium">
-                    {formatCurrency(
-                      typeof upcomingInvoice === "object" && upcomingInvoice !== null && "amount_due" in upcomingInvoice && typeof upcomingInvoice.amount_due === "number" ? upcomingInvoice.amount_due : 0,
-                      typeof upcomingInvoice === "object" && upcomingInvoice !== null && "currency" in upcomingInvoice && typeof upcomingInvoice.currency === "string" ? upcomingInvoice.currency : "usd"
-                    )}
+                    {formatCurrency(upcomingInvoice.amount_due, upcomingInvoice.currency)}
                   </span>
                 </div>
-                {typeof upcomingInvoice === "object" && upcomingInvoice !== null && "period_start" in upcomingInvoice && upcomingInvoice.period_start && (
+                {upcomingInvoice.period_start && upcomingInvoice.period_end && (
                   <div className="flex justify-between">
                     <span className="text-gray-400">Billing Period:</span>
                     <span className="text-white">
-                      {typeof upcomingInvoice.period_start === "number" && new Date(upcomingInvoice.period_start * 1000).toLocaleDateString()} - {"period_end" in upcomingInvoice && typeof upcomingInvoice.period_end === "number" ? new Date(upcomingInvoice.period_end * 1000).toLocaleDateString() : ""}
+                      {new Date(upcomingInvoice.period_start * 1000).toLocaleDateString()} - {new Date(upcomingInvoice.period_end * 1000).toLocaleDateString()}
                     </span>
                   </div>
                 )}

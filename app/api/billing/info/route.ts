@@ -58,7 +58,10 @@ export async function GET(req: Request) {
       try {
         const subscription = await stripe.subscriptions.retrieve(
           user.stripeSubscriptionId,
-        );
+        ) as Stripe.Subscription & {
+          current_period_start?: number;
+          current_period_end?: number;
+        };
 
         response.subscription = {
           id: subscription.id,

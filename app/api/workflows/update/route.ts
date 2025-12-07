@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { setWorkflowActive } from "@/lib/pipedreamClient";
@@ -55,16 +56,16 @@ export async function POST(req: Request) {
       name?: string;
       description?: string;
       intent?: string;
-      trigger?: Record<string, unknown>;
-      actions?: Array<Record<string, unknown>>;
+      trigger?: Prisma.InputJsonValue;
+      actions?: Prisma.InputJsonValue;
       active?: boolean;
     } = {};
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (intent !== undefined) updateData.intent = intent;
-    if (trigger !== undefined) updateData.trigger = trigger;
-    if (actions !== undefined) updateData.actions = actions;
+    if (trigger !== undefined) updateData.trigger = trigger as Prisma.InputJsonValue;
+    if (actions !== undefined) updateData.actions = actions as Prisma.InputJsonValue;
     if (active !== undefined) updateData.active = active;
 
     // 2. If trigger or actions are being updated, validate the merged workflow plan

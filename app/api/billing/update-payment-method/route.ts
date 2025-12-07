@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       {
         success: false,
         code: "INTERNAL_ERROR",
-        message: error.message || "Internal server error",
+        message: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

@@ -67,7 +67,9 @@ export async function POST(req: Request) {
     // Handle the event
     switch (event.type) {
       case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as Stripe.Invoice & {
+          subscription?: string | Stripe.Subscription;
+        };
 
         // Extract subscription ID - can be string or Subscription object
         const subscriptionId =
@@ -99,7 +101,9 @@ export async function POST(req: Request) {
       }
 
       case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as Stripe.Invoice & {
+          subscription?: string | Stripe.Subscription;
+        };
 
         // Extract subscription ID - can be string or Subscription object
         const subscriptionId =
@@ -131,7 +135,10 @@ export async function POST(req: Request) {
 
       case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as Stripe.Subscription & {
+          current_period_end?: number;
+          current_period_start?: number;
+        };
 
         // Find user by customer ID
         const user = await prisma.user.findFirst({
@@ -145,21 +152,32 @@ export async function POST(req: Request) {
             ? new Date(subscription.trial_end * 1000)
             : null;
 
-          // Extract add-ons from subscription metadata or items
-          const addonIds: string[] = [];
-          if (subscription.items?.data) {
-            // First item is the plan, rest are add-ons
-            subscription.items.data.slice(1).forEach((item) => {
-              if (item.price.id) {
-                addonIds.push(item.price.id);
-              }
-            });
+          // Extract plan name from first subscription item (the plan)
+          let planName: string | null = null;
+          if (subscription.items?.data && subscription.items.data.length > 0) {
+            const planPriceId = subscription.items.data[0].price.id;
+            // Import the helper function to map price ID to plan name
+            const { getPlanNameFromPriceId } = await import("@/lib/billing");
+            planName = getPlanNameFromPriceId(planPriceId);
           }
 
+          // Check for any additional subscription items that shouldn't be there
+          // Add-ons are NOT part of subscriptions - they are one-time purchases only
+          if (subscription.items?.data && subscription.items.data.length > 1) {
+            console.warn(
+              `Found ${subscription.items.data.length - 1} unexpected subscription items. ` +
+              `Add-ons should not be in subscriptions - they are one-time purchases only.`
+            );
+          }
+
+          // Note: We do NOT update the addOns field from subscription items
+          // because add-ons should never be in subscriptions.
+          // The addOns field is only updated via the /api/billing/purchase-addon endpoint.
           await prisma.user.update({
             where: { id: user.id },
             data: {
               stripeSubscriptionId: subscription.id,
+              plan: planName, // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
               subscriptionStatus: status,
               trialEndsAt: trialEnd,
               subscriptionStartedAt: new Date(subscription.created * 1000),
@@ -169,7 +187,7 @@ export async function POST(req: Request) {
                   : subscription.trial_end
                     ? new Date(subscription.trial_end * 1000)
                     : null,
-              addOns: addonIds,
+              // addOns field is NOT updated from subscriptions
             },
           });
         }

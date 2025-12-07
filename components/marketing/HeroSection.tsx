@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, Sparkles, Cpu, GitBranch, Workflow, Zap } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 
 const floatingIcons = [
   { Icon: Cpu, position: "top-[15%] left-[8%]", delay: 0, duration: 12 },
@@ -124,22 +125,14 @@ export default function HeroSection() {
             transition={{ duration: 0.8, delay: 0.8 }}
             className="flex flex-col items-center justify-center gap-5 sm:flex-row"
           >
-            <Link href="/waitlist">
-              <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }}>
-                <Button size="lg" className="group relative overflow-hidden rounded-lg px-8 py-4 shadow-lg">
-                  <span className="relative z-10 flex items-center gap-2">
-                    Join the Waitlist
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </span>
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-primary bg-[length:200%_100%] opacity-50"
-                    animate={{ backgroundPosition: ["0% 0%", "200% 0%"] }}
-                    transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-                  />
-                </Button>
-              </motion.div>
-            </Link>
+            {/* Primary CTA: Sign in with Google */}
+            <GoogleSignInButton
+              variant="default"
+              size="lg"
+              className="rounded-lg px-8 py-4 shadow-lg"
+            />
 
+            {/* Secondary CTA: Learn more */}
             <motion.a
               href="#how-it-works"
               whileHover={{ x: 4 }}

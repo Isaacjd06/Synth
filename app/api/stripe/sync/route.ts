@@ -69,25 +69,39 @@ export async function POST(req: Request) {
       );
     }
 
-    const subscription = subscriptions.data[0];
+    const subscription = subscriptions.data[0] as Stripe.Subscription;
     const priceId = subscription.items.data[0]?.price.id;
     const trialEnd = subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
       : null;
-    const currentPeriodEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000)
+    // Use type assertion to access period properties
+    const sub = subscription as Stripe.Subscription & {
+      current_period_end?: number;
+      current_period_start?: number;
+    };
+    const currentPeriodEnd = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000)
       : null;
-    const currentPeriodStart = subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000)
+    const currentPeriodStart = sub.current_period_start
+      ? new Date(sub.current_period_start * 1000)
       : null;
 
+    // Map price ID to plan name
+    let planName: string | null = null;
+    if (priceId) {
+      const { getPlanNameFromPriceId } = await import("@/lib/billing");
+      planName = getPlanNameFromPriceId(priceId);
+    }
+
     // 5. Update user subscription fields
+    // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
+    // This is needed for feature-gate.ts to work correctly
     await prisma.user.update({
       where: { id: userId },
       data: {
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: subscription.status,
-        plan: priceId || undefined,
+        plan: planName || undefined, // Store plan name instead of price ID
         subscriptionStartedAt: currentPeriodStart,
         subscriptionEndsAt: currentPeriodEnd,
         trialEndsAt: trialEnd,

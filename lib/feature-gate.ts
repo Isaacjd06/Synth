@@ -1,31 +1,54 @@
 import { prisma } from "@/lib/prisma";
 
+// Plan types aligned with pricing page and backend
+// - free: No subscription (1 workflow, no execution)
+// - starter: Starter plan - $49/mo (3 workflows)
+// - growth: Growth plan (stored as "pro" in backend) - $149/mo (10 workflows)
+// - scale: Scale plan (stored as "agency" in backend) - $399/mo (40 workflows)
+export type PlanType = "free" | "starter" | "growth" | "scale";
+
 export const FEATURES = {
   maxWorkflows: {
     free: 1,
-    pro: 50,
+    starter: 3,
+    growth: 10,
+    scale: 40,
   },
   allowWorkflowExecution: {
     free: false,
-    pro: true,
+    starter: true,
+    growth: true,
+    scale: true,
   },
 } as const;
 
 /**
  * Determines the user's plan based on plan field.
- * Returns "pro" if plan contains "pro" (case-insensitive), otherwise "free".
+ * Maps backend plan names to plan types:
+ * - "starter" → "starter"
+ * - "pro" → "growth" (Growth plan)
+ * - "agency" → "scale" (Scale plan)
+ * - null/undefined → "free"
  *
  * @param user - User object with plan field
- * @returns "free" | "pro"
+ * @returns PlanType ("free" | "starter" | "growth" | "scale")
  */
 export function getUserPlan(user: {
   plan?: string | null;
-}): "free" | "pro" {
+}): PlanType {
   const plan = user.plan?.toLowerCase() || "";
 
-  // Check if plan contains "pro" (handles "pro", "pro_monthly", "pro_yearly", etc.)
+  // Map backend plan names to plan types
+  if (plan.includes("starter")) {
+    return "starter";
+  }
+
   if (plan.includes("pro")) {
-    return "pro";
+    return "growth";
+  }
+
+  if (plan.includes("agency")) {
+    return "scale";
   }
 
   return "free";

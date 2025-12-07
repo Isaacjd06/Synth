@@ -5,6 +5,12 @@ import { auth } from "@/lib/auth";
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // API routes - let them handle their own authentication
+  // They will return JSON errors, not HTML redirects
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   // Public routes - allow access
   const publicRoutes = ["/", "/waitlist", "/pricing"];
   const isPublicRoute =

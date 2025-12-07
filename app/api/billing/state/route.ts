@@ -51,6 +51,7 @@ export async function GET(req: Request) {
         plan: true,
         subscriptionStatus: true,
         subscriptionRenewalAt: true,
+        trialEndsAt: true,
         addOns: true,
       },
     });
@@ -68,6 +69,7 @@ export async function GET(req: Request) {
 
     // 3. Check if user has a payment method (if they have a Stripe customer)
     let hasPaymentMethod = false;
+    let billingPeriod: "monthly" | "yearly" | null = null;
 
     if (user.stripeCustomerId) {
       try {
@@ -83,6 +85,31 @@ export async function GET(req: Request) {
             (typeof customer.invoice_settings.default_payment_method === "string" ||
               (customer.invoice_settings.default_payment_method as Stripe.PaymentMethod)?.id)
           );
+        }
+
+        // Determine billing period from subscription if it exists
+        if (user.stripeSubscriptionId) {
+          try {
+            const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+              expand: ["items.data.price"],
+            });
+
+            // Get the plan price ID from the first subscription item
+            const planPriceId = subscription.items.data[0]?.price.id;
+            if (planPriceId) {
+              const { isYearlyPriceId } = await import("@/lib/billing");
+              const isYearly = isYearlyPriceId(planPriceId);
+              if (isYearly !== null) {
+                billingPeriod = isYearly ? "yearly" : "monthly";
+              }
+            }
+          } catch (error: unknown) {
+            // Log error but don't fail - billing period detection is best effort
+            logError("app/api/billing/state (billing period detection)", error, {
+              userId,
+              subscriptionId: user.stripeSubscriptionId,
+            });
+          }
         }
       } catch (error: unknown) {
         // Log error but don't fail the request - payment method check is best effort
@@ -101,9 +128,13 @@ export async function GET(req: Request) {
       subscriptionRenewalAt: user.subscriptionRenewalAt
         ? user.subscriptionRenewalAt.toISOString()
         : null,
+      trialEndsAt: user.trialEndsAt
+        ? user.trialEndsAt.toISOString()
+        : null,
       addOns: user.addOns || [],
       stripeCustomerId: user.stripeCustomerId || null,
       hasPaymentMethod,
+      billingPeriod, // "monthly" | "yearly" | null
     };
 
     return NextResponse.json(response, { status: 200 });
@@ -114,7 +145,7 @@ export async function GET(req: Request) {
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to fetch billing state. Please try again."
         : "Internal server error";
 

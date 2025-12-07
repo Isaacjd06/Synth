@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logUsage } from "@/lib/usage";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
       context_type?: string;
       content?: string;
       relevance_score?: number;
-      metadata?: Record<string, unknown>;
+      metadata?: Prisma.InputJsonValue;
       last_accessed: Date;
     } = {
       last_accessed: new Date(), // Always update last_accessed
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     if (content !== undefined) updateData.content = content;
     if (relevance_score !== undefined)
       updateData.relevance_score = relevance_score;
-    if (metadata !== undefined) updateData.metadata = metadata;
+    if (metadata !== undefined) updateData.metadata = metadata as Prisma.InputJsonValue;
 
     const updated = await prisma.memory.update({
       where: { id },

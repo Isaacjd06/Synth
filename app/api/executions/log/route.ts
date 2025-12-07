@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 interface ExecutionLogRequestBody {
   workflow_id: string;
@@ -36,8 +37,8 @@ export async function POST(req: Request) {
       data: {
         workflow_id: workflowId,
         user_id: userId,
-        input_data: inputData,
-        output_data: outputData,
+        input_data: inputData as Prisma.InputJsonValue,
+        output_data: outputData as Prisma.InputJsonValue,
         status: outputData?.error ? "failure" : "success",
       },
     });

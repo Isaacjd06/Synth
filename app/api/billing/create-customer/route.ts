@@ -92,7 +92,7 @@ export async function POST(req: Request) {
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to create customer. Please try again."
         : "Internal server error";
 

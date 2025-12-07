@@ -14,13 +14,13 @@ const UpdateKnowledgeItemSchema = z.object({
 
 /**
  * PUT /api/knowledge/[id]
- * 
+ *
  * Update a knowledge item.
  * Requires full access (paid or trial).
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await authenticateAndCheckSubscription();
@@ -29,7 +29,7 @@ export async function PUT(
     }
     const { userId } = authResult;
 
-    const { id } = params;
+    const { id } = await params;
 
     // Verify the knowledge item belongs to the user
     const existingItem = await prisma.knowledge.findFirst({
