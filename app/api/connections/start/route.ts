@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { logError } from "@/lib/error-logger";
+import { initiateOAuthFlow } from "@/lib/pipedream-oauth";
 
 /**
  * POST /api/connections/start
  * 
- * Start a Pipedream OAuth connection flow for a service.
+ * Start an OAuth connection flow for a service.
  * Requires full access (paid or trial).
  * 
  * Body:
@@ -29,56 +30,47 @@ export async function POST(req: Request) {
       );
     }
 
-    // TODO: Implement Pipedream OAuth flow initiation
-    // This would typically:
-    // 1. Call Pipedream API to get OAuth authorization URL
-    // 2. Store temporary state (userId, serviceName) for callback verification
-    // 3. Return the authorization URL to the frontend
+    // Get base URL for callback
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const redirectUri = `${baseUrl}/api/connections/callback`;
+
+    // Initiate OAuth flow
+    const { authUrl, state } = await initiateOAuthFlow(
+      serviceName,
+      userId,
+      redirectUri
+    );
+
+    return NextResponse.json(
+      {
+        ok: true,
+        authUrl,
+        state,
+        serviceName,
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    logError("app/api/connections/start", error);
     
-    // For now, return a placeholder response
-    // In production, this would interact with Pipedream's OAuth API
-    const PIPEDREAM_API_KEY = process.env.PIPEDREAM_API_KEY;
-    const PIPEDREAM_API_URL = process.env.PIPEDREAM_API_URL || "https://api.pipedream.com/v1";
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     
-    if (!PIPEDREAM_API_KEY) {
+    // Check if it's a configuration error
+    if (errorMessage.includes("not configured")) {
       return NextResponse.json(
-        { error: "Pipedream API key not configured" },
+        {
+          ok: false,
+          error: "Connection service not available. Please contact support.",
+        },
         { status: 500 }
       );
     }
 
-    // Placeholder: In a real implementation, you would:
-    // 1. Create a Pipedream source for the service
-    // 2. Get the OAuth authorization URL
-    // 3. Store connection state (serviceName, userId) for callback
-    
-    // Example structure (needs to be implemented based on Pipedream API):
-    // const response = await fetch(`${PIPEDREAM_API_URL}/sources`, {
-    //   method: "POST",
-    //   headers: {
-    //     Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
-    //     "Content-Type": "application/json",
-    //   },
-    //   body: JSON.stringify({
-    //     name: `${serviceName}_${userId}`,
-    //     type: serviceName.toLowerCase(),
-    //   }),
-    // });
-    // const source = await response.json();
-    // const authUrl = source.auth_url;
-
     return NextResponse.json(
       {
-        connectUrl: `${PIPEDREAM_API_URL}/connect?service=${serviceName}&state=${userId}`,
-        serviceName,
-        message: "OAuth flow initiation - implementation needed based on Pipedream API",
+        ok: false,
+        error: errorMessage,
       },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    logError("app/api/connections/start", error);
-    return NextResponse.json(
-      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }

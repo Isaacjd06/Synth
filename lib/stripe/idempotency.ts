@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * Checks if a Stripe event has already been processed.
@@ -14,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 export async function checkAndStoreStripeEvent(
   eventId: string,
   type: string,
-  data: any,
+  data: unknown,
 ): Promise<boolean> {
   // Check if event already exists
   const existingEvent = await prisma.stripeEvent.findUnique({
@@ -32,15 +33,16 @@ export async function checkAndStoreStripeEvent(
       data: {
         stripe_event_id: eventId,
         type,
-        data,
+        data: data as Prisma.InputJsonValue,
         processed: false,
       },
     });
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // If creation fails due to unique constraint (race condition),
     // another request already created it, so return false
-    if (error.code === "P2002") {
+    const prismaError = error as { code?: string };
+    if (prismaError.code === "P2002") {
       return false;
     }
     throw error;

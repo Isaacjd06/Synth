@@ -10,6 +10,12 @@ import { logError } from "@/lib/error-logger";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
+import {
+  getRelevantMemories,
+  formatMemoriesForContext,
+  storeMemory,
+  updateMemoryAccess,
+} from "@/lib/memory";
 
 const chatLimiter = createRateLimiter("chat", 20, 60);
 
@@ -102,7 +108,18 @@ export async function POST(req: Request) {
       conversation_id: conversationId,
     });
 
-    // 6. Detect intent using AI
+    // 6. Retrieve relevant memories for context
+    const relevantMemories = await getRelevantMemories(userId, undefined, 5);
+    const memoryContext = formatMemoriesForContext(relevantMemories);
+
+    // Update last_accessed for retrieved memories
+    for (const memory of relevantMemories) {
+      await updateMemoryAccess(memory.id).catch(() => {
+        // Ignore errors updating access time
+      });
+    }
+
+    // 7. Detect intent using AI
     const intentResult = await detectChatIntent(message);
 
     if (!intentResult.ok) {
@@ -148,7 +165,7 @@ export async function POST(req: Request) {
       "general_response";
     let workflowId: string | undefined = undefined;
 
-    // 7. Process message based on intent
+    // 8. Process message based on intent
     if (intent === "create_workflow") {
       actionTaken = "create_workflow";
 
@@ -181,12 +198,12 @@ export async function POST(req: Request) {
           }
           assistantContent = `I tried to create a workflow, but encountered an error: ${generateData.error || "Unknown error"}`;
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         logError("app/api/chat (workflow creation)", error, {
           user_id: userId,
           intent: "create_workflow",
         });
-        assistantContent = `I encountered an error while creating the workflow: ${error.message || "Unknown error"}`;
+        assistantContent = `I encountered an error while creating the workflow: ${error instanceof Error ? error.message : "Unknown error"}`;
       }
     } else if (intent === "run_workflow") {
       actionTaken = "run_workflow";
@@ -220,13 +237,13 @@ export async function POST(req: Request) {
           } else {
             assistantContent = `I tried to run the workflow, but encountered an error: ${runData.error || "Unknown error"}`;
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           logError("app/api/chat (workflow execution)", error, {
             user_id: userId,
             workflow_id: workflowId,
             intent: "run_workflow",
           });
-          assistantContent = `I encountered an error while running the workflow: ${error.message || "Unknown error"}`;
+          assistantContent = `I encountered an error while running the workflow: ${error instanceof Error ? error.message : "Unknown error"}`;
         }
       } else {
         assistantContent =
@@ -240,8 +257,11 @@ export async function POST(req: Request) {
       // general_response
       actionTaken = "general_response";
 
-      // Generate a general AI response
-      const generalResponseResult = await generateGeneralResponse(message);
+      // Generate a general AI response with memory context
+      const generalResponseResult = await generateGeneralResponse(
+        message,
+        memoryContext
+      );
 
       if (generalResponseResult.ok && generalResponseResult.response) {
         assistantContent = generalResponseResult.response;
@@ -251,7 +271,33 @@ export async function POST(req: Request) {
       }
     }
 
-    // 8. Save assistant response to chat_messages
+    // 9. Store memory from this interaction if it's meaningful
+    if (actionTaken === "general_response" && assistantContent.length > 50) {
+      // Store conversation context as memory
+      try {
+        await storeMemory(
+          userId,
+          "conversation",
+          {
+            user_message: message,
+            assistant_response: assistantContent,
+            conversation_id: conversationId,
+            intent,
+          },
+          null,
+          {
+            created_from: "chat",
+            timestamp: new Date().toISOString(),
+          }
+        ).catch(() => {
+          // Ignore errors storing memory - non-critical
+        });
+      } catch {
+        // Ignore memory storage errors
+      }
+    }
+
+    // 10. Save assistant response to chat_messages
     const assistantMessage = await prisma.chatMessage.create({
       data: {
         user_id: userId,
@@ -266,7 +312,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 9. Fetch all messages in this conversation
+    // 11. Fetch all messages in this conversation
     const conversationMessages = await prisma.chatMessage.findMany({
       where: {
         conversation_id: conversationId,
@@ -276,7 +322,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 10. Return response
+    // 12. Return response
     return NextResponse.json(
       {
         ok: true,
@@ -293,12 +339,12 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/chat", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );
@@ -307,9 +353,13 @@ export async function POST(req: Request) {
 
 /**
  * Generate a general AI response for chat
+ * 
+ * @param message - User's message
+ * @param memoryContext - Optional context from memory system
  */
 async function generateGeneralResponse(
   message: string,
+  memoryContext?: string,
 ): Promise<{ ok: boolean; response?: string; error?: string }> {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -337,7 +387,8 @@ async function generateGeneralResponse(
               {
                 role: "system",
                 content:
-                  "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+                  "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation." +
+                  (memoryContext ? memoryContext : ""),
               },
               {
                 role: "user",
@@ -373,7 +424,8 @@ async function generateGeneralResponse(
           model: "claude-3-5-sonnet-20241022",
           max_tokens: 200,
           system:
-            "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation.",
+            "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation." +
+            (memoryContext ? memoryContext : ""),
           messages: [
             {
               role: "user",
@@ -395,11 +447,11 @@ async function generateGeneralResponse(
           "I'm here to help with workflow automation.",
       };
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/chat (generateGeneralResponse)", error);
     return {
       ok: false,
-      error: error.message || "Failed to generate response",
+      error: error instanceof Error ? error.message : "Failed to generate response",
     };
   }
 

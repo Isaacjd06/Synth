@@ -35,12 +35,16 @@ const ADDON_MAP: Record<
   },
 };
 
+interface PurchaseAddonRequestBody {
+  addon: string;
+}
+
 /**
  * POST /api/billing/purchase-addon
- * 
+ *
  * Purchases a one-time add-on for the authenticated user.
  * Charges the customer's default payment method immediately.
- * 
+ *
  * Request body:
  * {
  *   "addon": "rapid_booster" | "performance_turbo" | "business_jumpstart" | "persona_training" | "unlimited_knowledge"
@@ -68,7 +72,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as PurchaseAddonRequestBody;
     const { addon } = body;
 
     if (!addon) {
@@ -93,6 +97,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         stripeCustomerId: true,
+        stripeSubscriptionId: true,
         addOns: true,
       },
     });
@@ -111,17 +116,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if user has an active subscription (required for add-on purchases)
-    const subscriptionCheck = await requireActiveSubscription(userId);
-    if (subscriptionCheck) {
-      // Return the subscription error with the specific code
+    // CRITICAL: Add-ons can ONLY be purchased with the first subscription payment.
+    // If user already has a subscription (any status), they CANNOT purchase addons.
+    if (user.stripeSubscriptionId) {
       return NextResponse.json(
         {
           success: false,
-          code: "ADDON_REQUIRES_SUBSCRIPTION",
-          message: "Add-ons can only be purchased with an active subscription.",
+          code: "ADDONS_REQUIRE_NEW_SUBSCRIPTION",
+          message: "Add-ons can only be purchased with the first subscription payment. You already have a subscription.",
         },
-        { status: 403 }
+        { status: 400 }
       );
     }
 
@@ -247,24 +251,24 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/purchase-addon", error, {
       userId: (await auth())?.user?.id,
     });
 
     // Handle Stripe-specific errors
-    if (error.type === "StripeCardError") {
+    if (error && typeof error === 'object' && 'type' in error && error.type === "StripeCardError") {
       return NextResponse.json(
         {
           success: false,
           code: "PAYMENT_FAILED",
-          message: error.message || "Your card was declined. Please try a different payment method.",
+          message: (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') ? error.message : "Your card was declined. Please try a different payment method.",
         },
         { status: 402 }
       );
     }
 
-    if (error.type === "StripeInvalidRequestError") {
+    if (error && typeof error === 'object' && 'type' in error && error.type === "StripeInvalidRequestError") {
       return NextResponse.json(
         {
           success: false,
@@ -277,9 +281,9 @@ export async function POST(req: Request) {
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to process payment. Please try again."
-        : error.message || "Internal server error";
+        : error instanceof Error ? error.message : "Internal server error";
 
     return NextResponse.json(
       {

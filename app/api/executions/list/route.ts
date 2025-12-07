@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateWithAccessInfo } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +11,10 @@ export async function GET() {
     const { userId, accessInfo } = authResult;
 
     // Build where clause based on access level
-    let whereClause: any = {
+    const whereClause: {
+      user_id: string;
+      created_at?: { lte: Date };
+    } = {
       user_id: userId,
     };
 
@@ -30,10 +31,10 @@ export async function GET() {
     });
 
     return NextResponse.json({ ok: true, data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("EXECUTION LIST ERROR:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

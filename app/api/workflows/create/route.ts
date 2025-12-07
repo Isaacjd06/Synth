@@ -1,13 +1,20 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { checkWorkflowLimit } from "@/lib/feature-gate";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
+
+interface WorkflowCreateRequestBody {
+  name: string;
+  description?: string;
+  intent?: string;
+  trigger?: Record<string, unknown>;
+  actions?: Array<Record<string, unknown>>;
+}
 
 export async function POST(req: Request) {
   try {
@@ -17,7 +24,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as WorkflowCreateRequestBody;
 
     const { name, description, intent, trigger, actions } = body;
 
@@ -81,8 +88,8 @@ export async function POST(req: Request) {
         name,
         description: description || "",
         intent: intent || "",
-        trigger: trigger || {},
-        actions: actions || [],
+        trigger: (trigger as Prisma.InputJsonValue) || {},
+        actions: (actions as Prisma.InputJsonValue) || [],
         active: false,
       },
     });
@@ -101,10 +108,10 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(workflow, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW CREATE ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

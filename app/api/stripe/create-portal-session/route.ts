@@ -53,10 +53,10 @@ export async function POST(req: Request) {
       { url: portalSession.url },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("STRIPE PORTAL SESSION ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

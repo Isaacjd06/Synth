@@ -6,6 +6,12 @@ import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
 import { logError } from "@/lib/error-logger";
 
+interface CancelSubscriptionRequestBody {
+  cancel_at_period_end?: boolean;
+  reason?: string;
+  confirmation?: string; // User must type "UNSUBSCRIBE" to confirm
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Authenticate user
@@ -18,10 +24,22 @@ export async function POST(req: Request) {
     const userId = session.user.id;
 
     // 2. Parse request body
-    const body = await req.json();
-    const { cancel_at_period_end = true, reason } = body;
+    const body = await req.json() as CancelSubscriptionRequestBody;
+    const { cancel_at_period_end = true, reason, confirmation } = body;
 
-    // 3. Get user's current subscription
+    // 3. Require "UNSUBSCRIBE" confirmation
+    if (!confirmation || confirmation.trim() !== "UNSUBSCRIBE") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "CONFIRMATION_REQUIRED",
+          message: 'You must type "UNSUBSCRIBE" to confirm cancellation',
+        },
+        { status: 400 }
+      );
+    }
+
+    // 4. Get user's current subscription
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { stripeSubscriptionId: true },
@@ -34,14 +52,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Cancel subscription
+    // 5. Cancel subscription
     const canceledSubscription = await cancelSubscription(
       user.stripeSubscriptionId,
       cancel_at_period_end,
     );
 
-    // 5. Update user in database
-    const updateData: any = {
+    // 6. Update user in database
+    const updateData: {
+      subscriptionStatus: string;
+      subscriptionEndsAt?: Date;
+    } = {
       subscriptionStatus: cancel_at_period_end
         ? "cancels_at_period_end"
         : "canceled",
@@ -56,7 +77,7 @@ export async function POST(req: Request) {
       data: updateData,
     });
 
-    // 6. Save cancellation reason if provided
+    // 7. Save cancellation reason if provided
     if (reason && typeof reason === "string" && reason.trim()) {
       await prisma.subscriptionCancelReason.create({
         data: {
@@ -66,7 +87,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 7. Log audit event
+    // 8. Log audit event
     await logAudit("subscription.canceled", userId, {
       stripe_subscription_id: canceledSubscription.id,
       cancel_at_period_end,
@@ -74,7 +95,7 @@ export async function POST(req: Request) {
       reason: reason || null,
     });
 
-    // 8. Emit event
+    // 9. Emit event
     Events.emit("subscription:canceled", {
       user_id: userId,
       subscription_id: canceledSubscription.id,
@@ -82,7 +103,7 @@ export async function POST(req: Request) {
       reason: reason || null,
     });
 
-    // 9. Return canceled subscription
+    // 10. Return canceled subscription
     return NextResponse.json(
       {
         subscription_id: canceledSubscription.id,
@@ -94,7 +115,7 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/cancel", error, {
       userId: (await auth())?.user?.id,
     });
@@ -102,7 +123,7 @@ export async function POST(req: Request) {
       {
         success: false,
         code: "INTERNAL_ERROR",
-        message: error.message || "Internal server error",
+        message: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );

@@ -6,9 +6,9 @@ interface BillingInfo {
   has_customer: boolean;
   has_subscription: boolean;
   has_payment_method: boolean;
-  subscription: any;
-  payment_method: any;
-  upcoming_invoice: any;
+  subscription: Record<string, unknown> | null;
+  payment_method: Record<string, unknown> | null;
+  upcoming_invoice: Record<string, unknown> | null;
 }
 
 export function useBilling() {
@@ -32,8 +32,9 @@ export function useBilling() {
       }
 
       return data;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message);
       throw err;
     } finally {
       setLoading(false);
@@ -63,8 +64,9 @@ export function useBilling() {
         }
 
         return data;
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        const error = err as Error;
+        setError(error.message);
         throw err;
       } finally {
         setLoading(false);
@@ -91,8 +93,9 @@ export function useBilling() {
       }
 
       return data;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message);
       throw err;
     } finally {
       setLoading(false);
@@ -117,8 +120,9 @@ export function useBilling() {
       }
 
       return data;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message);
       throw err;
     } finally {
       setLoading(false);
@@ -143,8 +147,9 @@ export function useBilling() {
       }
 
       return data;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message);
       throw err;
     } finally {
       setLoading(false);
@@ -170,8 +175,9 @@ export function useBilling() {
         }
 
         return data;
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        const error = err as Error;
+        setError(error.message);
         throw err;
       } finally {
         setLoading(false);
@@ -197,8 +203,9 @@ export function useBilling() {
       }
 
       return data;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message);
       throw err;
     } finally {
       setLoading(false);

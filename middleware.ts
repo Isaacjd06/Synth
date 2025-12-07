@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { getAccessLevelFromSession } from "@/lib/access-control";
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  // API routes - let them handle their own authentication
+  // They will return JSON errors, not HTML redirects
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
 
   // Public routes - allow access
   const publicRoutes = ["/", "/waitlist", "/pricing"];
@@ -73,7 +78,7 @@ export async function middleware(request: NextRequest) {
       if (session?.user) {
         return NextResponse.redirect(new URL("/dashboard", request.url));
       }
-    } catch (error) {
+    } catch {
       // If auth check fails, allow landing page
     }
   }

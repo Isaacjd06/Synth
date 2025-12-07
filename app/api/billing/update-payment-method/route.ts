@@ -5,6 +5,10 @@ import { attachPaymentMethod } from "@/lib/billing";
 import { logAudit } from "@/lib/audit";
 import { logError } from "@/lib/error-logger";
 
+interface UpdatePaymentMethodRequestBody {
+  payment_method_id: string;
+}
+
 export async function POST(req: Request) {
   let userId: string | undefined;
 
@@ -26,7 +30,7 @@ export async function POST(req: Request) {
     userId = session.user.id;
 
     // 2. Parse request body
-    const body = await req.json();
+    const body = await req.json() as UpdatePaymentMethodRequestBody;
     const { payment_method_id } = body;
 
     if (!payment_method_id) {
@@ -76,7 +80,7 @@ export async function POST(req: Request) {
       { success: true, payment_method_id },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/update-payment-method", error, {
       userId,
     });
@@ -84,7 +88,7 @@ export async function POST(req: Request) {
       {
         success: false,
         code: "INTERNAL_ERROR",
-        message: error.message || "Internal server error",
+        message: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

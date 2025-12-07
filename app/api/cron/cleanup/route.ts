@@ -74,12 +74,12 @@ export async function POST(req: Request) {
     return NextResponse.json(summary, {
       status: hasErrors ? 207 : 200, // 207 Multi-Status if partial success
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CRON CLEANUP ERROR:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
         timestamp: new Date().toISOString(),
       },
       { status: 500 },
@@ -141,12 +141,12 @@ export async function GET(req: Request) {
     return NextResponse.json(summary, {
       status: hasErrors ? 207 : 200,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CRON CLEANUP ERROR:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
         timestamp: new Date().toISOString(),
       },
       { status: 500 },

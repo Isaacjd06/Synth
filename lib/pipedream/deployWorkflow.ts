@@ -5,7 +5,7 @@ import { createWorkflow, setWorkflowActive, WorkflowBlueprint } from "../pipedre
 
 export type DeployResult =
   | { ok: true; workflowId: string }
-  | { ok: false; error: string; details?: any };
+  | { ok: false; error: string; details?: unknown };
 
 /**
  * Convert WorkflowPlan to WorkflowBlueprint format
@@ -71,11 +71,12 @@ export async function deployWorkflow(
       ok: true,
       workflowId: workflow.id,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err as { message?: string };
     return {
       ok: false,
       error: "Network or fetch error while deploying workflow to Pipedream.",
-      details: err?.message || err,
+      details: error?.message || err,
     };
   }
 }

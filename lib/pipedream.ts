@@ -24,7 +24,7 @@ export class PipedreamError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public responseBody?: any
+    public responseBody?: unknown
   ) {
     super(message);
     this.name = "PipedreamError";
@@ -36,7 +36,7 @@ export class PipedreamError extends Error {
  */
 export interface CreateWorkflowResult {
   pipedream_workflow_id: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -48,10 +48,10 @@ export interface PipedreamExecution {
   status: "success" | "failure" | "running" | "error";
   started_at: string;
   finished_at?: string;
-  input_data?: Record<string, any>;
-  output_data?: Record<string, any>;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   error?: string;
-  [key: string]: any; // Allow additional fields
+  [key: string]: unknown; // Allow additional fields
 }
 
 /**
@@ -94,15 +94,19 @@ async function pipedreamRequest<T>(
     });
 
     if (!response.ok) {
-      let errorBody: any;
+      let errorBody: unknown;
       try {
         errorBody = await response.json();
       } catch {
         errorBody = await response.text();
       }
 
+      const errorMessage = typeof errorBody === 'object' && errorBody !== null && 'message' in errorBody
+        ? String((errorBody as { message: unknown }).message)
+        : String(errorBody);
+
       throw new PipedreamError(
-        `Pipedream API error (${response.status}): ${errorBody?.message || errorBody || response.statusText}`,
+        `Pipedream API error (${response.status}): ${errorMessage || response.statusText}`,
         response.status,
         errorBody
       );
@@ -134,7 +138,7 @@ async function pipedreamRequest<T>(
  * 
  * Maps the Synth blueprint structure to Pipedream's expected format
  */
-function blueprintToPipedreamFormat(blueprint: WorkflowBlueprint): any {
+function blueprintToPipedreamFormat(blueprint: WorkflowBlueprint): Record<string, unknown> {
   // Convert actions to Pipedream steps
   const steps = blueprint.actions.map((action, index) => ({
     id: `step_${index + 1}`,
@@ -175,7 +179,7 @@ export async function createWorkflow(
   const pipedreamWorkflow = blueprintToPipedreamFormat(blueprint);
 
   try {
-    const response = await pipedreamRequest<any>(
+    const response = await pipedreamRequest<Record<string, unknown>>(
       `/users/${PIPEDREAM_USER_ID}/workflows`,
       {
         method: "POST",
@@ -184,7 +188,7 @@ export async function createWorkflow(
     );
 
     return {
-      pipedream_workflow_id: response.id || response.workflow_id,
+      pipedream_workflow_id: String(response.id || response.workflow_id),
       metadata: {
         name: response.name,
         created_at: response.created_at,
@@ -223,7 +227,7 @@ export async function updateWorkflow(
   const pipedreamWorkflow = blueprintToPipedreamFormat(blueprint);
 
   try {
-    const response = await pipedreamRequest<any>(
+    const response = await pipedreamRequest<Record<string, unknown>>(
       `/users/${PIPEDREAM_USER_ID}/workflows/${pipedreamWorkflowId}`,
       {
         method: "PUT",
@@ -232,7 +236,7 @@ export async function updateWorkflow(
     );
 
     return {
-      pipedream_workflow_id: response.id || response.workflow_id || pipedreamWorkflowId,
+      pipedream_workflow_id: String(response.id || response.workflow_id || pipedreamWorkflowId),
       metadata: {
         name: response.name,
         updated_at: response.updated_at,
@@ -307,7 +311,7 @@ export async function listExecutions(
     const response = await pipedreamRequest<{
       data?: PipedreamExecution[];
       executions?: PipedreamExecution[];
-      [key: string]: any;
+      [key: string]: unknown;
     }>(
       `/users/${PIPEDREAM_USER_ID}/workflows/${pipedreamWorkflowId}/executions`,
       {

@@ -14,13 +14,13 @@ const UpdateKnowledgeItemSchema = z.object({
 
 /**
  * PUT /api/knowledge/[id]
- * 
+ *
  * Update a knowledge item.
  * Requires full access (paid or trial).
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authResult = await authenticateAndCheckSubscription();
@@ -29,7 +29,7 @@ export async function PUT(
     }
     const { userId } = authResult;
 
-    const { id } = params;
+    const { id } = await params;
 
     // Verify the knowledge item belongs to the user
     const existingItem = await prisma.knowledge.findFirst({
@@ -78,10 +78,10 @@ export async function PUT(
       ok: true,
       item: updatedItem,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PUT /api/knowledge/[id] error:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

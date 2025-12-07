@@ -29,15 +29,21 @@ interface N8nWorkflowNode {
   type: string;
   typeVersion: number;
   position: [number, number];
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
 }
 
 /**
  * n8n Workflow connection structure
  */
+interface N8nWorkflowConnectionNode {
+  node: string;
+  type: string;
+  index: number;
+}
+
 interface N8nWorkflowConnection {
   [key: string]: {
-    main: Array<Array<{ node: string; type: string; index: number }>>;
+    main: Array<Array<N8nWorkflowConnectionNode>>;
   };
 }
 
@@ -55,7 +61,7 @@ export interface N8nWorkflow {
     saveExecutionProgress?: boolean;
     executionTimeout?: number;
   };
-  staticData?: Record<string, any>;
+  staticData?: Record<string, unknown>;
   tags?: string[];
 }
 
@@ -74,7 +80,7 @@ export interface N8nExecution {
   workflowData?: N8nWorkflow;
   data?: {
     resultData: {
-      runData: Record<string, any>;
+      runData: Record<string, unknown>;
     };
   };
 }
@@ -88,11 +94,11 @@ export interface WorkflowBlueprint {
   intent: string;
   trigger: {
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   };
   actions: Array<{
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   }>;
 }
 
@@ -160,7 +166,7 @@ export function blueprintToN8nWorkflow(blueprint: WorkflowBlueprint): N8nWorkflo
     const nodeId = `action_${index}`;
     const actionNode: N8nWorkflowNode = {
       id: nodeId,
-      name: action.config.name || `Action ${index + 1}`,
+      name: (action.config.name as string) || `Action ${index + 1}`,
       type: mapActionType(action.type),
       typeVersion: 1,
       position: [250 + (index + 1) * 200, 300],
@@ -241,7 +247,8 @@ export async function createWorkflow(
   console.log('🔍 [n8n Client] Raw response from n8n:', JSON.stringify(response, null, 2));
 
   // n8n API returns the workflow directly, not wrapped in { data: ... }
-  const workflowData = ((response as any).data || response) as N8nWorkflow;
+  const responseData = response as Record<string, unknown>;
+  const workflowData = (responseData.data || response) as N8nWorkflow;
   console.log(`✅ [n8n Client] Workflow created successfully with ID: ${workflowData.id}`);
   return workflowData;
 }
@@ -278,7 +285,7 @@ export async function setWorkflowActive(
  */
 export async function executeWorkflow(
   workflowId: string,
-  inputData?: Record<string, any>
+  inputData?: Record<string, unknown>
 ): Promise<N8nExecution> {
   const response = await n8nRequest<{ data: N8nExecution }>(
     `/api/v1/workflows/${workflowId}/execute`,

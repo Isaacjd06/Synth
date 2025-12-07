@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { runWorkflow, PipedreamError } from "@/lib/pipedream";
 import { logUsage } from "@/lib/usage";
 import { checkFeature } from "@/lib/feature-gate";
@@ -79,13 +80,13 @@ export async function POST(
       );
     }
 
-    // 4. Check if workflow has a Pipedream ID
+    // 4. Check if workflow has a workflow engine ID
     if (!workflow.n8n_workflow_id) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Workflow does not have a Pipedream workflow ID. Please create the workflow in Pipedream first.",
+            "Workflow is not activated. Please activate the workflow first.",
         },
         { status: 400 },
       );
@@ -104,8 +105,8 @@ export async function POST(
         return NextResponse.json(
           {
             ok: false,
-            error: "Failed to run workflow in Pipedream",
-            pipedream_error: error.message,
+            error: "Failed to run workflow",
+            workflow_error: error.message,
           },
           { status: 500 },
         );
@@ -118,8 +119,8 @@ export async function POST(
       data: {
         workflow_id: workflow.id,
         user_id: userId,
-        input_data: pipedreamExecution.input_data || undefined,
-        output_data: pipedreamExecution.output_data || undefined,
+        input_data: pipedreamExecution.input_data ? (pipedreamExecution.input_data as Prisma.InputJsonValue) : undefined,
+        output_data: pipedreamExecution.output_data ? (pipedreamExecution.output_data as Prisma.InputJsonValue) : undefined,
         status: pipedreamExecution.status || "unknown",
         pipedream_execution_id: pipedreamExecution.id,
         created_at: new Date(pipedreamExecution.started_at),
@@ -159,20 +160,18 @@ export async function POST(
           input_data: execution.input_data,
           output_data: execution.output_data,
           status: execution.status,
-          pipedream_execution_id: execution.pipedream_execution_id,
           created_at: execution.created_at,
           finished_at: execution.finished_at,
         },
-        pipedream_execution: pipedreamExecution,
       },
       { status: 201 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/workflows/[id]/run", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );

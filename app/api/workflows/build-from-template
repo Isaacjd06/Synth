@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -55,11 +53,11 @@ export async function POST(req: Request) {
     let plan;
     try {
       plan = template.buildPlan(inputs);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return NextResponse.json(
         {
           error: "Template failed to build workflow plan.",
-          details: err?.message || err,
+          details: err instanceof Error ? err.message : String(err),
         },
         { status: 500 }
       );
@@ -100,10 +98,10 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("BUILD-FROM-TEMPLATE ERROR:", err);
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: err instanceof Error ? err.message : "Internal server error" },
       { status: 500 }
     );
   }

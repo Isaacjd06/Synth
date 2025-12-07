@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { runWorkflow } from "@/lib/pipedream/runWorkflow";
 import { logUsage } from "@/lib/usage";
 import { checkFeature } from "@/lib/feature-gate";
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Get Pipedream workflow ID (stored in n8n_workflow_id field temporarily)
+    // 2. Get workflow engine ID (stored in n8n_workflow_id field temporarily)
     const pipedreamWorkflowId = workflow.n8n_workflow_id;
 
     if (!pipedreamWorkflowId) {
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Execute workflow in Pipedream using wrapper with proper error handling
+    // 3. Execute workflow using wrapper with proper error handling
     const runResult = await runWorkflow(pipedreamWorkflowId, inputData || {});
 
     if (!runResult.ok) {
@@ -115,8 +116,8 @@ export async function POST(request: Request) {
         data: {
           workflow_id: id,
           user_id: userId,
-          input_data: inputData || {},
-          output_data: { error: runResult.error, details: runResult.details },
+          input_data: (inputData as Prisma.InputJsonValue) || {},
+          output_data: { error: runResult.error, details: runResult.details } as Prisma.InputJsonValue,
           status: "failure",
           finished_at: new Date(),
         },
@@ -145,8 +146,8 @@ export async function POST(request: Request) {
       data: {
         workflow_id: id,
         user_id: userId,
-        input_data: inputData || {},
-        output_data: execution.data?.output || null,
+        input_data: (inputData as Prisma.InputJsonValue) || {},
+        output_data: execution.data?.output ? (execution.data.output as Prisma.InputJsonValue) : undefined,
         status: "success",
         pipedream_execution_id: execution.id?.toString() || null,
         finished_at: execution.finished_at
@@ -175,14 +176,24 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { ok: true, message: "Workflow executed", execution },
+      {
+        ok: true,
+        message: "Workflow executed",
+        execution: {
+          id: executionRecord.id,
+          workflow_id: executionRecord.workflow_id,
+          status: executionRecord.status,
+          started_at: executionRecord.created_at,
+          finished_at: executionRecord.finished_at,
+        },
+      },
       { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     logError("app/api/workflows/run", err);
 
     return NextResponse.json(
-      { ok: false, error: err.message || "Internal server error" },
+      { ok: false, error: err instanceof Error ? err.message : "Internal server error" },
       { status: 500, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }

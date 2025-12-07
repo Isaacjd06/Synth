@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { generateWorkflowBlueprint } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { createWorkflow, PipedreamError } from "@/lib/pipedream";
 import { z } from "zod";
 
@@ -66,8 +67,8 @@ export async function POST(req: Request) {
         name: blueprint.name,
         description: blueprint.description || null,
         intent: intent,
-        trigger: blueprint.trigger as any, // Store as JSON
-        actions: blueprint.actions as any, // Store as JSON
+        trigger: blueprint.trigger as Prisma.InputJsonValue, // Store as JSON
+        actions: blueprint.actions as Prisma.InputJsonValue, // Store as JSON
         active: true,
       },
     });
@@ -108,21 +109,21 @@ export async function POST(req: Request) {
         { status: 201 }
       );
     } catch (error) {
-      // Pipedream API call failed - keep workflow in database but mark as inactive
+      // Workflow engine API call failed - keep workflow in database but mark as inactive
       pipedreamError =
         error instanceof PipedreamError
           ? error.message
           : error instanceof Error
           ? error.message
-          : "Unknown Pipedream API error";
+          : "Unknown workflow execution error";
 
-      console.error("Pipedream API error:", pipedreamError, error);
+      console.error("Workflow engine API error:", pipedreamError, error);
 
-      // Update workflow to mark it as inactive due to Pipedream error
+      // Update workflow to mark it as inactive due to workflow engine error
       const erroredWorkflow = await prisma.workflows.update({
         where: { id: workflow.id },
         data: {
-          active: false, // Mark as inactive since Pipedream creation failed
+          active: false, // Mark as inactive since workflow engine creation failed
         },
       });
 
@@ -130,8 +131,8 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Workflow created in database but failed to create in Pipedream",
-          pipedream_error: pipedreamError,
+          error: "Workflow created but failed to deploy",
+          workflow_error: pipedreamError,
           workflow: {
             id: erroredWorkflow.id,
             name: erroredWorkflow.name,
@@ -148,12 +149,12 @@ export async function POST(req: Request) {
         { status: 207 } // 207 Multi-Status - partial success
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW GENERATE ERROR:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

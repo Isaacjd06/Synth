@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 // Type definitions
 interface CreateExecutionBody {
   workflow_id: string;
-  input_data?: any;
-  output_data?: any;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   status?: string;
   pipedream_execution_id?: string;
   finished_at?: string;
@@ -14,8 +15,8 @@ interface CreateExecutionBody {
 
 interface UpdateExecutionBody {
   id: string;
-  input_data?: any;
-  output_data?: any;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
   status?: string;
   pipedream_execution_id?: string;
   finished_at?: string;
@@ -99,8 +100,8 @@ export async function POST(request: NextRequest) {
       data: {
         workflow_id: body.workflow_id,
         user_id: userId,
-        input_data: body.input_data,
-        output_data: body.output_data,
+        input_data: body.input_data as Prisma.InputJsonValue | undefined,
+        output_data: body.output_data as Prisma.InputJsonValue | undefined,
         status: body.status || "unknown",
         pipedream_execution_id: body.pipedream_execution_id || null,
         finished_at: body.finished_at ? new Date(body.finished_at) : null,
@@ -153,8 +154,8 @@ export async function PUT(request: NextRequest) {
     const execution = await prisma.execution.update({
       where: { id: body.id },
       data: {
-        input_data: body.input_data,
-        output_data: body.output_data,
+        input_data: body.input_data as Prisma.InputJsonValue | undefined,
+        output_data: body.output_data as Prisma.InputJsonValue | undefined,
         status: body.status,
         pipedream_execution_id: body.pipedream_execution_id,
         finished_at: body.finished_at ? new Date(body.finished_at) : undefined,

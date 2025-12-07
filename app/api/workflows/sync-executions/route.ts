@@ -24,10 +24,10 @@ type N8NExecution = {
   startedAt?: string;
   finishedAt?: string;
   stoppedAt?: string;
-  data?: any;
-  payload?: any;
-  result?: any;
-  output?: any;
+  data?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  output?: Record<string, unknown>;
 };
 
 export async function GET(request: NextRequest) {
@@ -194,13 +194,13 @@ export async function GET(request: NextRequest) {
           skipDuplicates: true,
         });
         insertedCount = result.count;
-      } catch (insertError: any) {
+      } catch (insertError: unknown) {
         logError('app/api/workflows/sync-executions (insert)', insertError, {
           user_id: userId,
           toInsertCount: toInsert.length,
         });
         return NextResponse.json(
-          { error: 'Failed to insert executions', details: insertError.message },
+          { error: 'Failed to insert executions', details: insertError instanceof Error ? insertError.message : 'Unknown error' },
           { status: 500 }
         );
       }
@@ -215,7 +215,7 @@ export async function GET(request: NextRequest) {
       inserted: insertedCount,
       skipped: skippedCount,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError('app/api/workflows/sync-executions', error);
     return NextResponse.json(
       {

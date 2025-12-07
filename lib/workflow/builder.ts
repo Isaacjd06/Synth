@@ -12,7 +12,7 @@ export interface N8nNode {
   type: string;
   typeVersion: number;
   position: [number, number];
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
 }
 
 export interface N8nConnectionItem {
@@ -31,7 +31,7 @@ export interface N8nWorkflow {
   name: string;
   nodes: N8nNode[];
   connections: N8nConnections;
-  settings?: Record<string, any>;
+  settings?: Record<string, unknown>;
   tags?: string[];
 }
 
@@ -101,10 +101,10 @@ function convertExpressionString(
  * Recursively walk a value and convert any expression strings.
  */
 function convertExpressionsDeep(
-  value: any,
+  value: unknown,
   actionIdToNodeName: Map<string, string>,
   triggerNodeName: string
-): any {
+): unknown {
   if (typeof value === "string") {
     return convertExpressionString(value, actionIdToNodeName, triggerNodeName);
   }
@@ -116,7 +116,7 @@ function convertExpressionsDeep(
   }
 
   if (value && typeof value === "object") {
-    const result: Record<string, any> = {};
+    const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       result[k] = convertExpressionsDeep(v, actionIdToNodeName, triggerNodeName);
     }
@@ -219,7 +219,7 @@ function buildActionNode(
     type: n8nType,
     typeVersion: 1,
     position,
-    parameters: convertedParams,
+    parameters: convertedParams as Record<string, unknown>,
   };
 }
 
@@ -250,11 +250,6 @@ function buildConnections(
       actionIdToNodeName.set(node.name, node.name);
     }
   }
-
-  // Map action id => onSuccessNext / onFailureNext
-  const actionMap = new Map(
-    plan.actions.map((a) => [a.id, a] as [string, typeof a])
-  );
 
   // Create connections between action nodes
   for (const action of plan.actions) {

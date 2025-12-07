@@ -85,14 +85,14 @@ export async function POST(req: Request) {
       { stripeCustomerId: customer.id },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/create-customer", error, {
       userId: (await auth())?.user?.id,
     });
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to create customer. Please try again."
         : "Internal server error";
 

@@ -24,11 +24,12 @@ export async function cleanupUsageLogs(): Promise<{
     return {
       deleted: result.count,
     };
-  } catch (error: any) {
-    console.error("CLEANUP USAGE LOGS ERROR:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("CLEANUP USAGE LOGS ERROR:", err);
     return {
       deleted: 0,
-      error: error.message || "Unknown error",
+      error: err.message || "Unknown error",
     };
   }
 }

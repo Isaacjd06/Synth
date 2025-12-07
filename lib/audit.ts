@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 /**
  * Logs an audit event to the database.
@@ -10,14 +11,14 @@ import { prisma } from "@/lib/prisma";
 export async function logAudit(
   action: string,
   userId?: string | null,
-  metadata?: any,
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   try {
     await prisma.auditLog.create({
       data: {
         user_id: userId || null,
         action,
-        metadata: metadata || null,
+        metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
       },
     });
   } catch (error) {

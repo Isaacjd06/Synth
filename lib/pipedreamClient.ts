@@ -18,7 +18,7 @@ export class PipedreamAPIError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public responseBody?: any
+    public responseBody?: unknown
   ) {
     super(message);
     this.name = 'PipedreamAPIError';
@@ -49,12 +49,12 @@ export interface PipedreamWorkflow {
   description?: string;
   trigger: {
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   };
   steps: Array<{
     id: string;
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   }>;
   active?: boolean;
 }
@@ -69,8 +69,8 @@ export interface PipedreamExecution {
   started_at: string;
   finished_at?: string;
   data?: {
-    input?: any;
-    output?: any;
+    input?: unknown;
+    output?: unknown;
   };
 }
 
@@ -83,12 +83,12 @@ export interface WorkflowBlueprint {
   intent: string;
   trigger: {
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   };
   actions: Array<{
     id: string; // Required: id field for step identification
     type: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   }>;
 }
 
@@ -118,15 +118,19 @@ async function pipedreamRequest<T>(
     });
 
     if (!response.ok) {
-      let errorBody: any;
+      let errorBody: unknown;
       try {
         errorBody = await response.json();
       } catch {
         errorBody = await response.text();
       }
 
+      const errorMessage = typeof errorBody === 'object' && errorBody !== null && 'message' in errorBody
+        ? String((errorBody as { message: unknown }).message)
+        : String(errorBody);
+
       throw new PipedreamAPIError(
-        `Pipedream API error (${response.status}): ${errorBody?.message || errorBody || response.statusText}`,
+        `Pipedream API error (${response.status}): ${errorMessage || response.statusText}`,
         response.status,
         errorBody
       );
@@ -261,7 +265,7 @@ export async function setWorkflowActive(
  */
 export async function executeWorkflow(
   workflowId: string,
-  inputData?: Record<string, any>
+  inputData?: Record<string, unknown>
 ): Promise<PipedreamExecution> {
   return pipedreamRequest<PipedreamExecution>(
     `/workflows/${workflowId}/execute`,

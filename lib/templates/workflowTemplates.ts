@@ -2,7 +2,7 @@ export type WorkflowTemplate = {
   id: string;
   name: string;
   description: string;
-  json: any; // raw WorkflowPlan JSON
+  json: Record<string, unknown>; // raw WorkflowPlan JSON
 };
 
 export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [

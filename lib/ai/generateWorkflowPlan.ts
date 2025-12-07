@@ -190,11 +190,12 @@ Return ONLY valid JSON matching the WorkflowPlan structure.`;
       ok: true,
       draft,
     };
-  } catch (error: any) {
-    console.error("Error generating workflow plan:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Error generating workflow plan:", err);
     return {
       ok: false,
-      error: error.message || "Failed to generate workflow plan",
+      error: err.message || "Failed to generate workflow plan",
     };
   }
 }

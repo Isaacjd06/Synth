@@ -1,13 +1,20 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logUsage } from "@/lib/usage";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
 import { logError } from "@/lib/error-logger";
 import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
+
+interface MemoryUpdateRequestBody {
+  id: string;
+  context_type?: string;
+  content?: string;
+  relevance_score?: number;
+  metadata?: Record<string, unknown>;
+}
 
 const memoryLimiter = createRateLimiter("memory", 15, 60);
 
@@ -22,7 +29,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const body = await req.json();
+    const body = await req.json() as MemoryUpdateRequestBody;
     const { id, context_type, content, relevance_score, metadata } = body;
 
     if (!id) {
@@ -48,13 +55,20 @@ export async function POST(req: Request) {
     }
 
     // Build update object dynamically
-    const updateData: any = {};
+    const updateData: {
+      context_type?: string;
+      content?: string;
+      relevance_score?: number;
+      metadata?: Prisma.InputJsonValue;
+      last_accessed: Date;
+    } = {
+      last_accessed: new Date(), // Always update last_accessed
+    };
     if (context_type !== undefined) updateData.context_type = context_type;
     if (content !== undefined) updateData.content = content;
     if (relevance_score !== undefined)
       updateData.relevance_score = relevance_score;
-    if (metadata !== undefined) updateData.metadata = metadata;
-    updateData.last_accessed = new Date(); // Always update last_accessed
+    if (metadata !== undefined) updateData.metadata = metadata as Prisma.InputJsonValue;
 
     const updated = await prisma.memory.update({
       where: { id },
@@ -84,12 +98,12 @@ export async function POST(req: Request) {
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/memory/update", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 },
     );

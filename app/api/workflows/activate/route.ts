@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +7,10 @@ import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { deployWorkflow } from "@/lib/pipedream/deployWorkflow";
 import { logAudit } from "@/lib/audit";
 
+interface WorkflowActivateRequestBody {
+  id: string;
+}
+
 export async function POST(req: Request) {
   try {
     const authResult = await authenticateAndCheckSubscription();
@@ -17,7 +19,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const { id } = await req.json();
+    const { id } = await req.json() as WorkflowActivateRequestBody;
 
     if (!id) {
       return NextResponse.json(
@@ -88,13 +90,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Deploy to Pipedream (using WorkflowPlan directly, no n8n conversion)
+    // 3. Deploy workflow (using WorkflowPlan directly, no n8n conversion)
     const deploy = await deployWorkflow(plan);
 
     if (!deploy.ok) {
       return NextResponse.json(
         {
-          error: "Failed to deploy workflow to Pipedream.",
+          error: "Failed to deploy workflow.",
           details: deploy.details || deploy.error,
         },
         { status: 500 },
@@ -125,14 +127,13 @@ export async function POST(req: Request) {
       {
         success: true,
         message: "Workflow activated successfully.",
-        workflow_id: pipedreamWorkflowId,
       },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW ACTIVATE ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

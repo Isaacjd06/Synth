@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -21,10 +19,10 @@ export async function GET() {
       { ok: true, data: memories },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("MEMORY LIST ERROR:", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Internal server error" },
+      { ok: false, error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

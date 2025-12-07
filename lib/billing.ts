@@ -63,33 +63,26 @@ export async function attachPaymentMethod(
   });
 }
 
-interface AddOn {
-  price_id: string;
-  name: string;
-  quantity: number;
-}
-
 /**
- * Create a subscription with plan and add-ons
+ * Create a subscription with a plan only.
+ *
+ * ⚠️ IMPORTANT: Add-ons are NOT supported in subscriptions.
+ * Add-ons are one-time purchases only and must be purchased separately.
+ *
+ * @param planPriceId - Stripe price ID for the plan
+ * @param customerId - Stripe customer ID
+ * @param trialDays - Optional trial period in days
+ * @returns Stripe subscription object
  */
-export async function createSubscriptionWithAddons(
-  customerId: string,
+export async function createSubscription(
   planPriceId: string,
-  addOns: AddOn[] = [],
+  customerId: string,
   trialDays?: number,
 ): Promise<Stripe.Subscription> {
-  // Build line items: plan + add-ons
+  // Build subscription with plan only
   const items: Stripe.SubscriptionCreateParams.Item[] = [
     { price: planPriceId, quantity: 1 },
   ];
-
-  // Add add-ons
-  for (const addOn of addOns) {
-    items.push({
-      price: addOn.price_id,
-      quantity: addOn.quantity,
-    });
-  }
 
   const subscriptionParams: Stripe.SubscriptionCreateParams = {
     customer: customerId,
@@ -111,6 +104,13 @@ export async function createSubscriptionWithAddons(
 
 /**
  * Switch subscription to a new plan (upgrade/downgrade)
+ *
+ * ⚠️ IMPORTANT: This only switches the plan. Add-ons are NOT part of subscriptions.
+ * Any additional subscription items found will be removed as they shouldn't exist.
+ *
+ * @param subscriptionId - Stripe subscription ID
+ * @param newPlanPriceId - Stripe price ID for the new plan
+ * @returns Updated Stripe subscription object
  */
 export async function switchSubscriptionPlan(
   subscriptionId: string,
@@ -119,23 +119,30 @@ export async function switchSubscriptionPlan(
   // Get current subscription
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
-  // Preserve add-ons while switching plan
-  // First item is the plan, rest are add-ons
+  // First item should be the plan
   const planItem = subscription.items.data[0];
 
   if (!planItem) {
     throw new Error("Plan item not found in subscription");
   }
 
-  const addOnItems = subscription.items.data.slice(1);
+  // Check for any additional items that shouldn't be there
+  const additionalItems = subscription.items.data.slice(1);
+  if (additionalItems.length > 0) {
+    console.warn(
+      `Found ${additionalItems.length} unexpected subscription items that will be removed. ` +
+      `Add-ons should not be in subscriptions - they are one-time purchases only.`
+    );
+  }
 
-  // Build items array: update plan, preserve add-ons
+  // Build items array: only the plan (remove any additional items)
   const items: Stripe.SubscriptionUpdateParams.Item[] = [
     { id: planItem.id, price: newPlanPriceId }, // Update plan
-    ...addOnItems.map(item => ({ id: item.id })), // Keep add-ons
+    // Remove any additional items by marking them as deleted
+    ...additionalItems.map(item => ({ id: item.id, deleted: true })),
   ];
 
-  // Update the subscription with new plan and preserved add-ons
+  // Update the subscription with new plan only
   const updatedSubscription = await stripe.subscriptions.update(subscriptionId, {
     items,
     proration_behavior: "none",
@@ -145,66 +152,25 @@ export async function switchSubscriptionPlan(
 }
 
 /**
- * Add or update add-ons for a subscription
+ * ⚠️ DEPRECATED: This function should not be used.
+ *
+ * Add-ons are ONE-TIME purchases only and should NOT be added to subscriptions.
+ * Use the one-time purchase API endpoint instead: /api/billing/purchase-addon
+ *
+ * This function is kept for backward compatibility but will throw an error if called.
+ *
+ * @deprecated Use one-time purchase endpoint for add-ons
+ * @throws Error indicating add-ons cannot be added to subscriptions
  */
 export async function updateSubscriptionAddons(
   subscriptionId: string,
-  desiredAddOns: AddOn[],
+  desiredAddOns: unknown[],
 ): Promise<Stripe.Subscription> {
-  // Get current subscription
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-  // Find plan item (first item) and current add-on items
-  const planItem = subscription.items.data[0];
-  const currentAddOnItems = subscription.items.data.slice(1);
-
-  // Build the update parameters
-  const items: Stripe.SubscriptionUpdateParams.Item[] = [
-    // Keep the plan item unchanged
-    { id: planItem.id },
-  ];
-
-  // Create a map of current add-ons by price_id
-  const currentAddOnsMap = new Map(
-    currentAddOnItems.map((item) => [item.price.id, item]),
+  throw new Error(
+    "Add-ons cannot be added to subscriptions. " +
+    "Add-ons are one-time purchases only. " +
+    "Use /api/billing/purchase-addon endpoint instead."
   );
-
-  // Create a map of desired add-ons by price_id
-  const desiredAddOnsMap = new Map(
-    desiredAddOns.map((addon) => [addon.price_id, addon]),
-  );
-
-  // Remove add-ons that are no longer desired
-  for (const [priceId, item] of currentAddOnsMap) {
-    if (!desiredAddOnsMap.has(priceId)) {
-      items.push({ id: item.id, deleted: true });
-    }
-  }
-
-  // Add new add-ons or update existing ones
-  for (const [priceId, addOn] of desiredAddOnsMap) {
-    const existingItem = currentAddOnsMap.get(priceId);
-    if (existingItem) {
-      // Update quantity if it changed
-      if (existingItem.quantity !== addOn.quantity) {
-        items.push({ id: existingItem.id, quantity: addOn.quantity });
-      } else {
-        // Keep unchanged
-        items.push({ id: existingItem.id });
-      }
-    } else {
-      // Add new add-on
-      items.push({ price: priceId, quantity: addOn.quantity });
-    }
-  }
-
-  // Update subscription
-  const updatedSubscription = await stripe.subscriptions.update(subscriptionId, {
-    items,
-    proration_behavior: "none",
-  });
-
-  return updatedSubscription;
 }
 
 /**
@@ -213,7 +179,14 @@ export async function updateSubscriptionAddons(
 export async function calculateSubscriptionTotal(
   planPriceId: string,
   addOnPriceIds: string[] = [],
-): Promise<{ total: number; currency: string; breakdown: any }> {
+): Promise<{
+  total: number;
+  currency: string;
+  breakdown: {
+    plan: { price_id: string; amount: number };
+    addOns: Array<{ price_id: string; amount: number; currency: string }>;
+  };
+}> {
   // Fetch plan price
   const planPrice = await stripe.prices.retrieve(planPriceId);
   const planAmount = planPrice.unit_amount || 0;
@@ -251,11 +224,14 @@ export function validatePlanAndAddons(
   planPriceId: string,
   addOnPriceIds: string[] = [],
 ): { valid: boolean; error?: string } {
-  // Get all valid plan price IDs from env
+  // Get all valid plan price IDs from env (both monthly and yearly)
   const validPlanPriceIds = [
     process.env.STRIPE_STARTER_PRICE_ID,
     process.env.STRIPE_PRO_PRICE_ID,
     process.env.STRIPE_AGENCY_PRICE_ID,
+    process.env.STRIPE_STARTER_YEARLY_PRICE_ID,
+    process.env.STRIPE_PRO_YEARLY_PRICE_ID,
+    process.env.STRIPE_AGENCY_YEARLY_PRICE_ID,
   ].filter(Boolean);
 
   // Check if plan is valid
@@ -265,6 +241,12 @@ export function validatePlanAndAddons(
 
   // Get all valid add-on price IDs from env
   const validAddOnPriceIds = [
+    process.env.STRIPE_ADDON_RAPID_AUTOMATION_BOOSTER_PRICE_ID,
+    process.env.STRIPE_ADDON_WORKFLOW_PERFORMANCE_TURBO_PRICE_ID,
+    process.env.STRIPE_ADDON_BUSINESS_SYSTEMS_JUMPSTART_PRICE_ID,
+    process.env.STRIPE_ADDON_AI_PERSONA_TRAINING_PRICE_ID,
+    process.env.STRIPE_ADDON_UNLIMITED_KNOWLEDGE_INJECTION_PRICE_ID,
+    // Legacy addon price IDs (for backward compatibility)
     process.env.STRIPE_ADDON_EXTRA_WORKFLOWS_PRICE_ID,
     process.env.STRIPE_ADDON_PRIORITY_SUPPORT_PRICE_ID,
     process.env.STRIPE_ADDON_WHITE_LABEL_PRICE_ID,
@@ -281,12 +263,125 @@ export function validatePlanAndAddons(
 }
 
 /**
+ * Map Stripe price ID to plan name
+ * This is the reverse mapping of plan names to price IDs
+ *
+ * Backend plan names:
+ * - "starter" → Starter plan (3 workflows)
+ * - "pro" → Growth plan (10 workflows)
+ * - "agency" → Scale plan (40 workflows)
+ *
+ * @param priceId - Stripe price ID to map
+ * @returns Plan name ("starter" | "pro" | "agency") or null if not found
+ */
+export function getPlanNameFromPriceId(priceId: string): string | null {
+  if (!priceId) {
+    console.warn("getPlanNameFromPriceId: Empty price ID provided");
+    return null;
+  }
+
+  // Get all valid plan price IDs from env
+  // Note: Yearly price IDs may not be configured - they're optional
+  const planMappings: Array<{ name: string; priceId: string | undefined }> = [
+    // Monthly plans
+    { name: "starter", priceId: process.env.STRIPE_STARTER_PRICE_ID },
+    { name: "pro", priceId: process.env.STRIPE_PRO_PRICE_ID },
+    { name: "agency", priceId: process.env.STRIPE_AGENCY_PRICE_ID },
+    // Yearly plans (optional)
+    { name: "starter", priceId: process.env.STRIPE_STARTER_YEARLY_PRICE_ID },
+    { name: "pro", priceId: process.env.STRIPE_PRO_YEARLY_PRICE_ID },
+    { name: "agency", priceId: process.env.STRIPE_AGENCY_YEARLY_PRICE_ID },
+  ];
+
+  // Find the plan name that matches this price ID
+  const mapping = planMappings.find((m) => m.priceId && m.priceId === priceId);
+
+  if (!mapping) {
+    console.warn(`getPlanNameFromPriceId: Unknown price ID "${priceId}". ` +
+      `This could mean: 1) Price ID not in .env, 2) Yearly billing not configured, ` +
+      `3) Invalid/test price ID used. Check your Stripe configuration.`);
+    return null;
+  }
+
+  return mapping.name;
+}
+
+/**
+ * Determine if a Stripe price ID is for yearly billing
+ *
+ * @param priceId - Stripe price ID to check
+ * @returns true if yearly, false if monthly, null if unknown
+ */
+export function isYearlyPriceId(priceId: string): boolean | null {
+  if (!priceId) {
+    return null;
+  }
+
+  const yearlyPriceIds = [
+    process.env.STRIPE_STARTER_YEARLY_PRICE_ID,
+    process.env.STRIPE_PRO_YEARLY_PRICE_ID,
+    process.env.STRIPE_AGENCY_YEARLY_PRICE_ID,
+  ].filter(Boolean);
+
+  return yearlyPriceIds.includes(priceId);
+}
+
+/**
  * Get payment method details for a customer
  */
 export async function getPaymentMethod(
   paymentMethodId: string,
 ): Promise<Stripe.PaymentMethod> {
   return await stripe.paymentMethods.retrieve(paymentMethodId);
+}
+
+/**
+ * Validate that addons can only be purchased with first subscription payment
+ * 
+ * @param userId - User ID to check
+ * @param addons - Array of addon IDs to validate
+ * @returns Object with valid flag and error message if invalid
+ */
+export async function validateAddonPurchaseWithSubscription(
+  userId: string,
+  addons: string[],
+): Promise<{ valid: boolean; error?: string }> {
+  if (addons.length === 0) {
+    return { valid: true };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      stripeSubscriptionId: true,
+      subscriptionStatus: true,
+      addOns: true,
+    },
+  });
+
+  if (!user) {
+    return { valid: false, error: "User not found" };
+  }
+
+  // If user has any subscription (any status), addons cannot be purchased
+  // Addons can only be purchased with the first subscription payment
+  if (user.stripeSubscriptionId) {
+    return {
+      valid: false,
+      error: "Add-ons can only be purchased with the first subscription payment. You already have a subscription.",
+    };
+  }
+
+  // Check if any addon is already owned
+  const alreadyOwned = addons.filter(addon => user.addOns.includes(addon));
+  if (alreadyOwned.length > 0) {
+    return {
+      valid: false,
+      error: `You already own the following add-on(s): ${alreadyOwned.join(", ")}`,
+    };
+  }
+
+  return { valid: true };
 }
 
 /**
@@ -314,12 +409,17 @@ export async function getUpcomingInvoice(
   customerId: string,
 ): Promise<Stripe.Invoice | null> {
   try {
-    return await (stripe.invoices as any).retrieveUpcoming({
+    // Use type assertion with unknown intermediate to safely access Stripe's method
+    const invoices = stripe.invoices as unknown as {
+      retrieveUpcoming: (params: { customer: string }) => Promise<Stripe.Invoice>;
+    };
+    return await invoices.retrieveUpcoming({
       customer: customerId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string };
     // No upcoming invoice
-    if (error.code === "invoice_upcoming_none") {
+    if (err.code === "invoice_upcoming_none") {
       return null;
     }
     throw error;

@@ -77,11 +77,11 @@ export async function POST(req: Request) {
       { success: true },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WAITLIST API ERROR:", error);
 
     // Handle Prisma unique constraint violation (shouldn't happen due to check above, but just in case)
-    if (error.code === "P2002") {
+    if (error && typeof error === 'object' && 'code' in error && error.code === "P2002") {
       // Email already exists - return success without revealing
       return NextResponse.json(
         { success: true },

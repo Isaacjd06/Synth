@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
@@ -32,10 +30,10 @@ export async function GET() {
       { status: 200 }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW LIST ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

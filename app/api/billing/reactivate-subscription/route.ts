@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { logError } from "@/lib/error-logger";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
+import Stripe from "stripe";
 
 /**
  * POST /api/billing/reactivate-subscription
@@ -79,11 +80,13 @@ export async function POST(req: Request) {
       {
         cancel_at_period_end: false,
       }
-    );
+    ) as Stripe.Subscription & {
+      current_period_end?: number;
+    };
 
     // 5. Update user in database
-    const renewalAt = (subscription as any).current_period_end
-      ? new Date((subscription as any).current_period_end * 1000)
+    const renewalAt = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
       : null;
 
     await prisma.user.update({
@@ -118,7 +121,7 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/reactivate-subscription", error, {
       userId: (await auth())?.user?.id,
     });
@@ -127,7 +130,7 @@ export async function POST(req: Request) {
       {
         success: false,
         code: "INTERNAL_ERROR",
-        message: error.message || "Internal server error",
+        message: error instanceof Error ? error.message : "Internal server error",
       },
       { status: 500 }
     );

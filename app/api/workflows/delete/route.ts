@@ -1,9 +1,11 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+
+interface WorkflowDeleteRequestBody {
+  id: string;
+}
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +15,7 @@ export async function POST(req: Request) {
     }
     const { userId } = authResult;
 
-    const { id } = await req.json();
+    const { id } = await req.json() as WorkflowDeleteRequestBody;
 
     if (!id) {
       return NextResponse.json(
@@ -52,10 +54,10 @@ export async function POST(req: Request) {
       { success: true, deleted_id: id },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("WORKFLOW DELETE ERROR:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }

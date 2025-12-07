@@ -1,4 +1,4 @@
-export async function callN8N(path: string, body: any = {}) {
+export async function callN8N(path: string, body: Record<string, unknown> = {}) {
     const res = await fetch(`${process.env.N8N_URL}${path}`, {
       method: "POST",
       headers: {

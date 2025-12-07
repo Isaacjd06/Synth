@@ -2,13 +2,9 @@
 
 import {
     WorkflowPlan,
-    ActionDefinition,
-    TriggerDefinition,
   } from "./types";
   import {
     WorkflowPlanSchema,
-    ActionDefinitionSchema,
-    TriggerDefinitionSchema,
   } from "./schema";
   
   /**
@@ -16,7 +12,7 @@ import {
    */
   export type WorkflowPlanValidationResult =
     | { ok: true; plan: WorkflowPlan }
-    | { ok: false; error: string; details?: any };
+    | { ok: false; error: string; details?: unknown };
   
   /**
    * Validates a workflow plan (raw input).
@@ -29,15 +25,16 @@ import {
     let parsed: WorkflowPlan;
     try {
       parsed = WorkflowPlanSchema.parse(raw) as WorkflowPlan;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { errors?: unknown };
       return {
         ok: false,
         error: "WorkflowPlan schema validation failed.",
-        details: err?.errors || err,
+        details: error?.errors || err,
       };
     }
-  
-    const { trigger, actions } = parsed;
+
+    const { actions } = parsed;
   
     // Step 2: Ensure action IDs are unique
     const seenIds = new Set<string>();

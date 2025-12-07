@@ -93,14 +93,14 @@ export async function POST(req: Request) {
       { clientSecret: setupIntent.client_secret },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     logError("app/api/billing/create-setup-intent", error, {
       userId: (await auth())?.user?.id,
     });
 
     // Return safe error message without exposing internal details
     const errorMessage =
-      error.message && error.message.includes("Stripe")
+      error instanceof Error && error.message.includes("Stripe")
         ? "Failed to create setup intent. Please try again."
         : "Internal server error";
 

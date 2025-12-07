@@ -29,7 +29,7 @@ export type WebhookTriggerDefinition = {
   
   export type ManualTriggerDefinition = {
     type: "manual";
-    config?: Record<string, any>;
+    config?: Record<string, unknown>;
   };
   
   export type TriggerDefinition =
@@ -60,7 +60,7 @@ export type WebhookTriggerDefinition = {
       method?: string;
       headers?: Record<string, string>;
       query?: Record<string, string>;
-      body?: any;
+      body?: unknown;
       authRef?: string; // optional pointer to a connection in your DB
     };
     onSuccessNext: string[];
@@ -74,7 +74,7 @@ export type WebhookTriggerDefinition = {
     id: string;
     type: "set_data";
     params: {
-      fields: Record<string, any>;
+      fields: Record<string, unknown>;
     };
     onSuccessNext: string[];
     onFailureNext?: string[];
@@ -139,7 +139,7 @@ export type WebhookTriggerDefinition = {
     intent?: string;
     trigger: TriggerDefinition;
     actions: ActionDefinition[];
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
   
   /**
@@ -161,6 +161,6 @@ export type WebhookTriggerDefinition = {
     description: string;
     category: string;
     requiredInputs: WorkflowTemplateInputField[];
-    buildPlan: (inputs: Record<string, any>) => WorkflowPlan;
+    buildPlan: (inputs: Record<string, unknown>) => WorkflowPlan;
   };
   

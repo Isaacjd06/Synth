@@ -12,7 +12,34 @@ export async function GET() {
   try {
     const authResult = await authenticateWithAccessInfo();
     if (authResult instanceof NextResponse) {
-      return authResult; // Returns 401
+      // Ensure auth errors also return proper JSON structure
+      // Check if it's already JSON, if not, wrap it
+      const contentType = authResult.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return authResult; // Already JSON, return as-is
+      }
+      // If somehow not JSON, return proper JSON structure
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unauthorized",
+          stats: {
+            activeWorkflows: 0,
+            totalExecutions: 0,
+            executionsLast24h: 0,
+            successRate: 0,
+          },
+          updates: [],
+          recentWorkflows: [],
+          recentExecutions: [],
+        },
+        { 
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     const { userId, accessInfo } = authResult;
@@ -28,10 +55,17 @@ export async function GET() {
           executionsLast24h: 0,
           successRate: 0,
         },
+        recentWorkflows: [],
+        recentExecutions: [],
+      }, {
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
     }
 
     // Calculate statistics
+    // Wrap database operations in try-catch to handle connection errors
     const activeWorkflowsCount = await prisma.workflows.count({
       where: {
         user_id: userId,
@@ -69,7 +103,7 @@ export async function GET() {
       totalExecutions > 0 ? (successExecutions / totalExecutions) * 100 : 0;
 
     // Get recent notable events
-    const updates: any[] = [];
+    const updates: Array<Record<string, unknown>> = [];
 
     // Check for workflows that never ran
     const workflows = await prisma.workflows.findMany({
@@ -162,8 +196,49 @@ export async function GET() {
         (priorityOrder[b.priority as keyof typeof priorityOrder] || 2);
       if (priorityDiff !== 0) return priorityDiff;
       return (
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime()
       );
+    });
+
+    // Get recent workflows (last 3)
+    const recentWorkflows = await prisma.workflows.findMany({
+      where: {
+        user_id: userId,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+      take: 3,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        active: true,
+        created_at: true,
+      },
+    });
+
+    // Get recent executions (last 3)
+    const recentExecutions = await prisma.execution.findMany({
+      where: {
+        user_id: userId,
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+      take: 3,
+      select: {
+        id: true,
+        workflow_id: true,
+        status: true,
+        created_at: true,
+        workflow: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     return NextResponse.json({
@@ -175,15 +250,37 @@ export async function GET() {
         executionsLast24h,
         successRate: Math.round(successRate * 100) / 100, // Round to 2 decimals
       },
+      recentWorkflows,
+      recentExecutions,
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DASHBOARD UPDATES ERROR:", error);
+    // Always return JSON, even on unexpected errors
+    // This prevents Next.js from returning HTML error pages
     return NextResponse.json(
       {
         ok: false,
-        error: error.message || "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
+        stats: {
+          activeWorkflows: 0,
+          totalExecutions: 0,
+          executionsLast24h: 0,
+          successRate: 0,
+        },
+        updates: [],
+        recentWorkflows: [],
+        recentExecutions: [],
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 }

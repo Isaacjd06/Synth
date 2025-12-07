@@ -2,7 +2,7 @@
 
 import { WorkflowPlan, WorkflowTemplate } from "./types";
 
-type TemplateInputs = Record<string, any>;
+type TemplateInputs = Record<string, unknown>;
 
 // Small helper to normalize webhook paths from slugs
 function buildWebhookPath(slug: string): string {

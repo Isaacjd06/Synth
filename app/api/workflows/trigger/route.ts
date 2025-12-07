@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateAndCheckSubscription } from '@/lib/auth-helpers';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { runWorkflow } from '@/lib/pipedream/runWorkflow';
 
 export async function POST(request: NextRequest) {
@@ -59,12 +60,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if workflow has Pipedream ID (stored in n8n_workflow_id field temporarily)
+    // Check if workflow has workflow engine ID (stored in n8n_workflow_id field temporarily)
     if (!workflow.n8n_workflow_id) {
       return NextResponse.json(
         {
           error: 'Workflow is not activated',
-          details: 'This workflow has not been deployed to Pipedream. Please activate it first.',
+          details: 'This workflow has not been deployed. Please activate it first.',
         },
         { status: 400 }
       );
@@ -82,11 +83,11 @@ export async function POST(request: NextRequest) {
         data: {
           workflow_id: workflow.id,
           user_id: userId,
-          input_data: body.input || {},
+          input_data: (body.input as Prisma.InputJsonValue) || {},
           output_data: {
             error: runResult.error,
             details: runResult.details,
-          },
+          } as Prisma.InputJsonValue,
           status: 'failure',
           pipedream_execution_id: null,
           finished_at: new Date(),
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: 'Failed to execute workflow in Pipedream',
+          error: 'Failed to execute workflow',
           details: runResult.error || runResult.details,
         },
         { status: 500 }
@@ -113,14 +114,14 @@ export async function POST(request: NextRequest) {
         data: {
           workflow_id: workflow.id,
           user_id: userId,
-          input_data: body.input || {},
-          output_data: execution.data?.output || null,
+          input_data: (body.input as Prisma.InputJsonValue) || {},
+          output_data: execution.data?.output ? (execution.data.output as Prisma.InputJsonValue) : undefined,
           status: executionStatus,
           pipedream_execution_id: execution.id || null,
           finished_at: execution.finished_at ? new Date(execution.finished_at) : null,
         },
       });
-    } catch (insertError: any) {
+    } catch (insertError: unknown) {
       console.error('Failed to save execution to Neon:', insertError);
       // Non-fatal: execution ran successfully in Pipedream
     }
@@ -134,7 +135,6 @@ export async function POST(request: NextRequest) {
           id: savedExecution?.id || null,
           workflow_id: workflow.id,
           workflow_name: workflow.name,
-          pipedream_execution_id: execution.id || null,
           status: executionStatus,
           started_at: execution.started_at,
           finished_at: execution.finished_at || null,
