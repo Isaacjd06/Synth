@@ -67,11 +67,6 @@ export default async function WorkflowDetailPage({
                   Inactive
                 </Badge>
               )}
-              {workflow.n8n_workflow_id && (
-                <span className="text-sm text-gray-500 font-mono">
-                  Pipedream ID: {workflow.n8n_workflow_id}
-                </span>
-              )}
             </div>
           </div>
           <WorkflowRunButton workflowId={workflow.id} n8nWorkflowId={workflow.n8n_workflow_id} />
@@ -112,35 +107,38 @@ export default async function WorkflowDetailPage({
           <CardContent>
             {workflow.actions && Array.isArray(workflow.actions) && workflow.actions.length > 0 ? (
               <div className="space-y-4">
-                {workflow.actions.map((action: any, index: number) => (
+                {workflow.actions.map((action, index: number) => {
+                  const actionObj = action as Record<string, unknown>;
+                  return (
                   <div key={index} className="border border-gray-800 rounded-lg p-4">
                     <div className="mb-2">
                       <span className="text-sm font-medium text-gray-300">
                         Action {index + 1}
                       </span>
-                      {action.type && (
+                      {Boolean(actionObj.type) && (
                         <span className="ml-2 text-xs text-gray-500">
-                          Type: {action.type}
+                          Type: {String(actionObj.type)}
                         </span>
                       )}
-                      {action.app && (
+                      {Boolean(actionObj.app) && (
                         <span className="ml-2 text-xs text-gray-500">
-                          App: {action.app}
+                          App: {String(actionObj.app)}
                         </span>
                       )}
-                      {action.operation && (
+                      {Boolean(actionObj.operation) && (
                         <span className="ml-2 text-xs text-gray-500">
-                          Operation: {action.operation}
+                          Operation: {String(actionObj.operation)}
                         </span>
                       )}
                     </div>
                     <pre className="bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto mt-2">
                       <code className="text-sm text-gray-300">
-                        {JSON.stringify(action, null, 2)}
+                        {JSON.stringify(actionObj, null, 2)}
                       </code>
                     </pre>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-gray-400 italic">No actions configured</p>

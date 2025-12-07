@@ -20,13 +20,14 @@ import {
 } from "@/components/ui/dialog";
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
+import type { JsonValue } from "@prisma/client/runtime/library";
 
 interface Execution {
   id: string;
   workflow_id: string;
   user_id: string;
-  input_data: any;
-  output_data: any;
+  input_data: JsonValue;
+  output_data: JsonValue;
   status: string | null;
   pipedream_execution_id: string | null;
   created_at: Date;

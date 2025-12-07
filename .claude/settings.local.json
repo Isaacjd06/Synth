@@ -55,7 +55,13 @@
       "Bash(npx tsc:*)",
       "Bash(pnpm build:*)",
       "Bash(if exist .env type .env)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run lint)",
+      "Bash(npx eslint:*)",
+      "Bash(while read file)",
+      "Bash(do grep -q \"try {\" \"$file\")",
+      "Bash(echo:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

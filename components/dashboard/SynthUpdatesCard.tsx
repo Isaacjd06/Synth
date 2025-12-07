@@ -26,9 +26,31 @@ interface Execution {
   };
 }
 
+interface Update {
+  type: string;
+  title: string;
+  message: string;
+  priority: "high" | "medium" | "low";
+  createdAt: string;
+  workflowId?: string;
+  workflowName?: string;
+}
+
+interface Stats {
+  activeWorkflows: number;
+  totalExecutions: number;
+  executionsLast24h: number;
+  successRate: number;
+}
+
 export default function SynthUpdatesCard() {
-  const [totalWorkflows, setTotalWorkflows] = useState(0);
-  const [totalExecutions, setTotalExecutions] = useState(0);
+  const [stats, setStats] = useState<Stats>({
+    activeWorkflows: 0,
+    totalExecutions: 0,
+    executionsLast24h: 0,
+    successRate: 0,
+  });
+  const [updates, setUpdates] = useState<Update[]>([]);
   const [recentWorkflows, setRecentWorkflows] = useState<Workflow[]>([]);
   const [recentExecutions, setRecentExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,49 +63,81 @@ export default function SynthUpdatesCard() {
         setLoading(true);
         setError(null);
 
-        // Fetch workflows and executions in parallel from existing API routes
-        const [workflowsRes, executionsRes] = await Promise.all([
-          fetch("/api/workflows/list", { cache: "no-store" }),
-          fetch("/api/executions", { cache: "no-store" }),
-        ]);
-
-        if (!workflowsRes.ok) {
-          const errorData = await workflowsRes.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to fetch workflows");
-        }
-
-        if (!executionsRes.ok) {
-          const errorData = await executionsRes.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to fetch executions");
-        }
-
-        const workflowsData = await workflowsRes.json();
-        const executionsData = await executionsRes.json();
-
-        // Parse workflows - API returns array directly
-        const allWorkflows: Workflow[] = Array.isArray(workflowsData) ? workflowsData : [];
-        
-        // Parse executions - API returns { success: true, data: [...] }
-        const allExecutions: Execution[] = 
-          executionsData.success && Array.isArray(executionsData.data)
-            ? executionsData.data
-            : [];
-
-        // Set totals
-        setTotalWorkflows(allWorkflows.length);
-        setTotalExecutions(allExecutions.length);
-
-        // Set recent items (already ordered by created_at desc from API)
-        // Limit to 3 as required
-        setRecentWorkflows(allWorkflows.slice(0, 3));
-        setRecentExecutions(allExecutions.slice(0, 3));
-      } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        const errorMessage = err.message || "Failed to load dashboard data";
-        setError(errorMessage);
-        toast.error("Failed to Load Dashboard", {
-          description: errorMessage,
+        // Fetch all dashboard data from consolidated endpoint
+        const response = await fetch("/api/dashboard/updates", {
+          cache: "no-store",
         });
+
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await response.text();
+          console.error("Non-JSON response received:", text.substring(0, 200));
+          // Set placeholder data instead of throwing error
+          setStats({
+            activeWorkflows: 0,
+            totalExecutions: 0,
+            executionsLast24h: 0,
+            successRate: 0,
+          });
+          setUpdates([]);
+          setRecentWorkflows([]);
+          setRecentExecutions([]);
+          return;
+        }
+
+        if (!response.ok) {
+          // Try to parse JSON error, but handle gracefully
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            // If we can't parse JSON, use the status text
+          }
+          // Set placeholder data instead of throwing error
+          setStats({
+            activeWorkflows: 0,
+            totalExecutions: 0,
+            executionsLast24h: 0,
+            successRate: 0,
+          });
+          setUpdates([]);
+          setRecentWorkflows([]);
+          setRecentExecutions([]);
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.ok) {
+          setStats(data.stats || {
+            activeWorkflows: 0,
+            totalExecutions: 0,
+            executionsLast24h: 0,
+            successRate: 0,
+          });
+          setUpdates(data.updates || []);
+          setRecentWorkflows(data.recentWorkflows || []);
+          setRecentExecutions(data.recentExecutions || []);
+        } else {
+          throw new Error(data.error || "Failed to load dashboard data");
+        }
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error("Error fetching dashboard data:", error);
+        // Set placeholder data on any error
+        setStats({
+          activeWorkflows: 0,
+          totalExecutions: 0,
+          executionsLast24h: 0,
+          successRate: 0,
+        });
+        setUpdates([]);
+        setRecentWorkflows([]);
+        setRecentExecutions([]);
+        // Don't set error state - just show empty/placeholder data
+        setError(null);
       } finally {
         setLoading(false);
       }
@@ -118,22 +172,73 @@ export default function SynthUpdatesCard() {
     );
   }
 
-  if (error) {
+  // Show placeholder data if there's an error but don't block the UI
+  if (error && stats.activeWorkflows === 0 && stats.totalExecutions === 0) {
     return (
-      <Card className="border-red-800 bg-red-900/10">
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-white">Synth Updates</h2>
-          <p className="text-red-400 text-sm">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="text-sm text-[#194c92] hover:text-[#1a5ba8] transition-colors"
-          >
-            Retry
-          </button>
+      <Card>
+        <div className="space-y-6">
+          {/* Header */}
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-2">
+              Synth Updates
+            </h2>
+            <div className="flex items-center gap-2">
+              <Badge variant="success">{systemStatus}</Badge>
+              <span className="text-xs text-gray-400">System Status</span>
+            </div>
+          </div>
+
+          {/* Stats Grid - Show placeholders */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-2xl font-bold text-white">0</div>
+              <div className="text-sm text-gray-400">Active Workflows</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">0</div>
+              <div className="text-sm text-gray-400">Total Executions</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">0</div>
+              <div className="text-sm text-gray-400">Last 24 Hours</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">0%</div>
+              <div className="text-sm text-gray-400">Success Rate</div>
+            </div>
+          </div>
+
+          {/* Recent Workflows */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-300">
+                Recent Workflows
+              </h3>
+            </div>
+            <p className="text-sm text-gray-400">No workflows yet</p>
+          </div>
+
+          {/* Recent Executions */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-300">
+                Recent Executions
+              </h3>
+            </div>
+            <p className="text-sm text-gray-400">No executions yet</p>
+          </div>
         </div>
       </Card>
     );
   }
+
+  const getPriorityVariant = (
+    priority: string
+  ): "success" | "active" | "error" => {
+    if (priority === "high") return "error";
+    if (priority === "medium") return "active";
+    return "success";
+  };
 
   return (
     <Card>
@@ -153,17 +258,59 @@ export default function SynthUpdatesCard() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="text-2xl font-bold text-white">
-              {totalWorkflows}
+              {stats.activeWorkflows}
             </div>
-            <div className="text-sm text-gray-400">Total Workflows</div>
+            <div className="text-sm text-gray-400">Active Workflows</div>
           </div>
           <div>
             <div className="text-2xl font-bold text-white">
-              {totalExecutions}
+              {stats.totalExecutions}
             </div>
             <div className="text-sm text-gray-400">Total Executions</div>
           </div>
+          <div>
+            <div className="text-2xl font-bold text-white">
+              {stats.executionsLast24h}
+            </div>
+            <div className="text-sm text-gray-400">Last 24 Hours</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white">
+              {stats.successRate.toFixed(1)}%
+            </div>
+            <div className="text-sm text-gray-400">Success Rate</div>
+          </div>
         </div>
+
+        {/* Alerts/Updates Section - NEW */}
+        {updates.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-300 mb-3">
+              Recent Alerts
+            </h3>
+            <div className="space-y-2">
+              {updates.map((update, index) => (
+                <div
+                  key={index}
+                  className="p-3 rounded-lg border border-gray-800 bg-gray-900/30"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-sm font-medium text-white">
+                      {update.title}
+                    </p>
+                    <Badge
+                      variant={getPriorityVariant(update.priority)}
+                      className="flex-shrink-0"
+                    >
+                      {update.priority}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-gray-400">{update.message}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Recent Workflows (limit 3) */}
         <div>

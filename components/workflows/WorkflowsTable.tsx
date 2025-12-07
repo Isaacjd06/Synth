@@ -57,10 +57,11 @@ export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps
           description: data.error || "Unknown error occurred",
         });
       }
-    } catch (error: any) {
-      console.error("Error running workflow:", error);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error running workflow:", err);
       toast.error("Failed to run workflow", {
-        description: error.message || "Network error occurred",
+        description: err.message || "Network error occurred",
       });
     } finally {
       setRunningWorkflowId(null);
@@ -128,11 +129,6 @@ export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps
                   <Badge className="bg-gray-800 text-gray-400 border-gray-700">
                     Inactive
                   </Badge>
-                )}
-                {workflow.n8n_workflow_id && (
-                  <div className="mt-1 text-xs text-gray-500 font-mono">
-                    PD: {workflow.n8n_workflow_id.slice(0, 8)}...
-                  </div>
                 )}
               </TableCell>
               <TableCell>

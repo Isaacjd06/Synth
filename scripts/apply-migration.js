@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Script to apply the migration SQL directly to the database
 const { readFileSync } = require('fs');
 const { join } = require('path');

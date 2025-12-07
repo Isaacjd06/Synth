@@ -47,9 +47,10 @@ export default async function WorkflowsPage() {
         n8n_workflow_id: true,
       },
     });
-  } catch (err: any) {
-    console.error("Error fetching workflows:", err);
-    error = err.message || "Failed to load workflows";
+  } catch (err: unknown) {
+    const e = err as Error;
+    console.error("Error fetching workflows:", e);
+    error = e.message || "Failed to load workflows";
   }
 
   return (

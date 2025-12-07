@@ -22,7 +22,7 @@ export default function Header() {
   const hasValidSubscription = isActive || isTrialValid;
 
   const handleSignIn = () => {
-    router.push("/api/auth/signin");
+    router.push("/api/auth/signin?provider=google");
   };
 
   const handleSignOut = async () => {

@@ -18,7 +18,7 @@ interface ChatMessage {
     intent?: string;
     action_taken?: string;
     workflow_id?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -135,8 +135,9 @@ export default function ChatPage() {
         };
         setMessages((prev) => [...prev, errorMessage]);
       }
-    } catch (error: any) {
-      console.error("Error sending message:", error);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("Error sending message:", err);
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "assistant",

@@ -57,9 +57,10 @@ export default function PaymentElementForm({
 
         onSuccess(paymentMethodId);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || "An unexpected error occurred");
-      onError(err.message || "An unexpected error occurred");
+    } catch (err: unknown) {
+      const error = err as Error;
+      setErrorMessage(error.message || "An unexpected error occurred");
+      onError(error.message || "An unexpected error occurred");
     } finally {
       setProcessing(false);
     }

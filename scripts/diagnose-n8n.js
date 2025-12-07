@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 
 /**
  * n8n Configuration Diagnostics
- * 
+ *
  * This script helps diagnose why n8n is showing a login screen
  * despite setting N8N_USER_MANAGEMENT_DISABLED=true and N8N_BASIC_AUTH_ACTIVE=false
  */
