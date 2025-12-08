@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -12,9 +12,10 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { Loader2, Play, ExternalLink } from "lucide-react";
+import { Loader2, Play, ExternalLink, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { EmptyWorkflowsState } from "@/components/ui/EmptyState";
 
 interface Workflow {
   id: string;
@@ -31,8 +32,42 @@ interface WorkflowsTableProps {
   error: string | null;
 }
 
-export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps) {
+export default function WorkflowsTable({ workflows: initialWorkflows, error }: WorkflowsTableProps) {
   const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState(initialWorkflows);
+  const [syncing, setSyncing] = useState(false);
+
+  // Sync workflow status from Pipedream
+  const syncWorkflowStatus = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/workflows/sync-status", {
+        method: "POST",
+      });
+      const data = await response.json();
+      
+      if (data.ok) {
+        // Reload page to get updated workflow status
+        window.location.reload();
+      } else {
+        toast.error("Failed to sync workflow status", {
+          description: data.error || "Unknown error",
+        });
+      }
+    } catch (error) {
+      console.error("Error syncing workflow status:", error);
+      toast.error("Failed to sync workflow status");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Auto-sync on mount and every 30 seconds
+  useEffect(() => {
+    syncWorkflowStatus();
+    const interval = setInterval(syncWorkflowStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleRunWorkflow = async (workflowId: string) => {
     if (runningWorkflowId) {
@@ -78,17 +113,27 @@ export default function WorkflowsTable({ workflows, error }: WorkflowsTableProps
 
   if (workflows.length === 0) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-        <p className="text-gray-400 mb-4">No workflows yet.</p>
-        <Link href="/chat">
-          <Button variant="default">Create via Chat</Button>
-        </Link>
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-8">
+        <EmptyWorkflowsState />
       </div>
     );
   }
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Your Workflows</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={syncWorkflowStatus}
+          disabled={syncing}
+          className="gap-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Syncing..." : "Sync Status"}
+        </Button>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>

@@ -18,6 +18,7 @@ interface UseSubscriptionGateReturn {
  * Client-side hook to gate pages behind active subscription
  * Fetches subscription status from /api/billing/info
  * Redirects to /billing if no active subscription
+ * 
  * Returns { allowed: boolean, loading: boolean }
  */
 export function useSubscriptionGate(): UseSubscriptionGateReturn {

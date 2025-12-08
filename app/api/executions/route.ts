@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const workflowId = searchParams.get("workflow_id");
 
     // Filter by workflow_id if provided, always filter by user_id for security
-    const executions = await prisma.execution.findMany({
+    const executions = await prisma.executions.findMany({
       where: {
         user_id: userId,
         ...(workflowId ? { workflow_id: workflowId } : {}),
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const execution = await prisma.execution.create({
+    const execution = await prisma.executions.create({
       data: {
         workflow_id: body.workflow_id,
         user_id: userId,
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if execution exists and belongs to user
-    const existingExecution = await prisma.execution.findFirst({
+    const existingExecution = await prisma.executions.findFirst({
       where: {
         id: body.id,
         user_id: userId,
@@ -151,7 +151,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const execution = await prisma.execution.update({
+    const execution = await prisma.executions.update({
       where: { id: body.id },
       data: {
         input_data: body.input_data as Prisma.InputJsonValue | undefined,
@@ -192,7 +192,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if execution exists and belongs to user
-    const existingExecution = await prisma.execution.findFirst({
+    const existingExecution = await prisma.executions.findFirst({
       where: {
         id,
         user_id: userId,
@@ -206,7 +206,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.execution.delete({
+    await prisma.executions.delete({
       where: { id },
     });
 

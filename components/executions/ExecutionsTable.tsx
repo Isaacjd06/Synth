@@ -21,6 +21,7 @@ import {
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
 import type { JsonValue } from "@prisma/client/runtime/library";
+import { EmptyExecutionsState } from "@/components/ui/EmptyState";
 
 interface Execution {
   id: string;
@@ -32,7 +33,7 @@ interface Execution {
   pipedream_execution_id: string | null;
   created_at: Date;
   finished_at: Date | null;
-  workflow: {
+  workflows: {
     id: string;
     name: string;
   };
@@ -97,11 +98,7 @@ export default function ExecutionsTable({ executions, error }: ExecutionsTablePr
   }
 
   if (executions.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-gray-400">No executions found.</p>
-      </div>
-    );
+    return <EmptyExecutionsState />;
   }
 
   return (
@@ -125,7 +122,7 @@ export default function ExecutionsTable({ executions, error }: ExecutionsTablePr
                   href={`/workflows/${execution.workflow_id}`}
                   className="hover:text-blue-400 transition-colors"
                 >
-                  {execution.workflow.name}
+                  {execution.workflows.name}
                 </Link>
               </TableCell>
               <TableCell className="font-mono text-sm text-gray-300">
@@ -172,7 +169,7 @@ export default function ExecutionsTable({ executions, error }: ExecutionsTablePr
                     href={`/workflows/${selectedExecution.workflow_id}`}
                     className="text-blue-400 hover:text-blue-300"
                   >
-                    {selectedExecution.workflow.name}
+                    {selectedExecution.workflows.name}
                   </Link>
                 </div>
                 <div>

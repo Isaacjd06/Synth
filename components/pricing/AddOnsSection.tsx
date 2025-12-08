@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Zap, Rocket, Wrench, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 
 const capacityPacks = [
   { runs: "25k", price: 49 },

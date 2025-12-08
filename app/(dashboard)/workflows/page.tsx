@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import WorkflowsTable from "@/components/workflows/WorkflowsTable";
 import SubscriptionGate from "@/components/subscription/SubscriptionGate";
 import SubscriptionInactiveBanner from "@/components/subscription/SubscriptionInactiveBanner";
+import { getWorkflow, PipedreamAPIError } from "@/lib/pipedreamClient";
 
 export default async function WorkflowsPage() {
   // Authenticate user
@@ -30,7 +31,8 @@ export default async function WorkflowsPage() {
   let error: string | null = null;
 
   try {
-    workflows = await prisma.workflows.findMany({
+    // First fetch workflows from database
+    const dbWorkflows = await prisma.workflows.findMany({
       where: {
         user_id: session.user.id,
       },
@@ -47,6 +49,33 @@ export default async function WorkflowsPage() {
         n8n_workflow_id: true,
       },
     });
+
+    // Sync status from Pipedream for workflows that have Pipedream IDs
+    for (const workflow of dbWorkflows) {
+      if (workflow.n8n_workflow_id) {
+        try {
+          const pipedreamWorkflow = await getWorkflow(workflow.n8n_workflow_id);
+          // Update workflow status from Pipedream
+          if (workflow.active !== (pipedreamWorkflow.active || false)) {
+            await prisma.workflows.update({
+              where: { id: workflow.id },
+              data: {
+                active: pipedreamWorkflow.active || false,
+                pipedream_deployment_state: pipedreamWorkflow.active ? "active" : "inactive",
+              },
+            });
+            workflow.active = pipedreamWorkflow.active || false;
+          }
+        } catch (error) {
+          // Log but don't fail - continue with database values
+          if (error instanceof PipedreamAPIError) {
+            console.warn(`Failed to sync workflow ${workflow.id} from Pipedream:`, error.message);
+          }
+        }
+      }
+    }
+
+    workflows = dbWorkflows;
   } catch (err: unknown) {
     const e = err as Error;
     console.error("Error fetching workflows:", e);

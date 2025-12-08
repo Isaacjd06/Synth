@@ -7,6 +7,7 @@ import WorkflowRunButton from "@/components/workflows/WorkflowRunButton";
 import WorkflowExecutions from "@/components/workflows/WorkflowExecutions";
 import SubscriptionGate from "@/components/subscription/SubscriptionGate";
 import SubscriptionInactiveBanner from "@/components/subscription/SubscriptionInactiveBanner";
+import { getWorkflow, PipedreamAPIError } from "@/lib/pipedreamClient";
 
 export default async function WorkflowDetailPage({
   params,
@@ -23,7 +24,7 @@ export default async function WorkflowDetailPage({
   }
 
   // Fetch workflow from database
-  const workflow = await prisma.workflows.findUnique({
+  let workflow = await prisma.workflows.findUnique({
     where: {
       id: id,
       user_id: session.user.id,
@@ -43,6 +44,29 @@ export default async function WorkflowDetailPage({
 
   if (!workflow) {
     redirect("/workflows");
+  }
+
+  // Sync status from Pipedream if workflow has Pipedream ID
+  if (workflow.n8n_workflow_id) {
+    try {
+      const pipedreamWorkflow = await getWorkflow(workflow.n8n_workflow_id);
+      // Update workflow status from Pipedream
+      if (workflow.active !== (pipedreamWorkflow.active || false)) {
+        await prisma.workflows.update({
+          where: { id: workflow.id },
+          data: {
+            active: pipedreamWorkflow.active || false,
+            pipedream_deployment_state: pipedreamWorkflow.active ? "active" : "inactive",
+          },
+        });
+        workflow.active = pipedreamWorkflow.active || false;
+      }
+    } catch (error) {
+      // Log but don't fail - continue with database values
+      if (error instanceof PipedreamAPIError) {
+        console.warn(`Failed to sync workflow ${workflow.id} from Pipedream:`, error.message);
+      }
+    }
   }
 
   return (

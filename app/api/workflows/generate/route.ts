@@ -48,8 +48,8 @@ export async function POST(req: Request) {
 
     const { intent } = validationResult.data;
 
-    // 4. Generate workflow blueprint using AI
-    const aiResult = await generateWorkflowBlueprint(intent);
+    // 4. Generate workflow blueprint using AI (with knowledge base context)
+    const aiResult = await generateWorkflowBlueprint(intent, userId);
 
     if (!aiResult.ok) {
       return NextResponse.json(

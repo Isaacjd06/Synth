@@ -45,6 +45,8 @@ export default function WorkflowExecutions({ workflowId }: WorkflowExecutionsPro
 
   // Fetch executions on mount and when workflow is executed
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
     fetchExecutions();
 
     // Listen for workflow execution events
@@ -53,8 +55,15 @@ export default function WorkflowExecutions({ workflowId }: WorkflowExecutionsPro
     };
 
     window.addEventListener("workflow-executed", handleWorkflowExecuted);
+
+    // Poll for new executions every 15 seconds when viewing a workflow
+    intervalId = setInterval(fetchExecutions, 15000);
+
     return () => {
       window.removeEventListener("workflow-executed", handleWorkflowExecuted);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
   }, [workflowId]);
 
@@ -124,7 +133,12 @@ export default function WorkflowExecutions({ workflowId }: WorkflowExecutionsPro
             </div>
           ) : executions.length === 0 ? (
             <p className="text-gray-400 text-center py-8">
-              No executions yet. Run the workflow to see execution history.
+              <div className="text-center py-8">
+                <p className="text-gray-400 mb-4">No executions yet.</p>
+                <p className="text-sm text-gray-500">
+                  Run the workflow to see execution history here.
+                </p>
+              </div>
             </p>
           ) : (
             <Table>

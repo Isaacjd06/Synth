@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Link from "next/link";
 import { formatDate, formatStatus, truncate } from "@/lib/utils";
+import { EmptyDashboardState } from "@/components/ui/EmptyState";
 
 interface Workflow {
   id: string;
@@ -55,9 +56,11 @@ export default function SynthUpdatesCard() {
   const [recentExecutions, setRecentExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const systemStatus = "Operational"; // Hardcoded as required
+  const [systemStatus, setSystemStatus] = useState<string>("operational");
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
     async function fetchData() {
       try {
         setLoading(true);
@@ -120,6 +123,7 @@ export default function SynthUpdatesCard() {
           setUpdates(data.updates || []);
           setRecentWorkflows(data.recentWorkflows || []);
           setRecentExecutions(data.recentExecutions || []);
+          setSystemStatus(data.systemStatus || "operational");
         } else {
           throw new Error(data.error || "Failed to load dashboard data");
         }
@@ -143,7 +147,18 @@ export default function SynthUpdatesCard() {
       }
     }
 
+    // Initial fetch
     fetchData();
+
+    // Set up polling: refresh every 30 seconds
+    intervalId = setInterval(fetchData, 30000);
+
+    // Cleanup on unmount
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, []);
 
   const getExecutionStatus = (execution: Execution): "success" | "error" => {
@@ -172,66 +187,6 @@ export default function SynthUpdatesCard() {
     );
   }
 
-  // Show placeholder data if there's an error but don't block the UI
-  if (error && stats.activeWorkflows === 0 && stats.totalExecutions === 0) {
-    return (
-      <Card>
-        <div className="space-y-6">
-          {/* Header */}
-          <div>
-            <h2 className="text-xl font-semibold text-white mb-2">
-              Synth Updates
-            </h2>
-            <div className="flex items-center gap-2">
-              <Badge variant="success">{systemStatus}</Badge>
-              <span className="text-xs text-gray-400">System Status</span>
-            </div>
-          </div>
-
-          {/* Stats Grid - Show placeholders */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-2xl font-bold text-white">0</div>
-              <div className="text-sm text-gray-400">Active Workflows</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">0</div>
-              <div className="text-sm text-gray-400">Total Executions</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">0</div>
-              <div className="text-sm text-gray-400">Last 24 Hours</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">0%</div>
-              <div className="text-sm text-gray-400">Success Rate</div>
-            </div>
-          </div>
-
-          {/* Recent Workflows */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-300">
-                Recent Workflows
-              </h3>
-            </div>
-            <p className="text-sm text-gray-400">No workflows yet</p>
-          </div>
-
-          {/* Recent Executions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-300">
-                Recent Executions
-              </h3>
-            </div>
-            <p className="text-sm text-gray-400">No executions yet</p>
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
   const getPriorityVariant = (
     priority: string
   ): "success" | "active" | "error" => {
@@ -239,6 +194,13 @@ export default function SynthUpdatesCard() {
     if (priority === "medium") return "active";
     return "success";
   };
+
+  // Show empty state for new users with no data
+  const hasNoData = !loading && !error && stats.activeWorkflows === 0 && stats.totalExecutions === 0 && recentWorkflows.length === 0 && recentExecutions.length === 0;
+  
+  if (hasNoData) {
+    return <EmptyDashboardState />;
+  }
 
   return (
     <Card>
@@ -249,7 +211,9 @@ export default function SynthUpdatesCard() {
             Synth Updates
           </h2>
           <div className="flex items-center gap-2">
-            <Badge variant="success">{systemStatus}</Badge>
+            <Badge variant={systemStatus === "operational" ? "success" : systemStatus === "degraded" ? "active" : "error"}>
+              {systemStatus === "operational" ? "Operational" : systemStatus === "degraded" ? "Degraded" : "Error"}
+            </Badge>
             <span className="text-xs text-gray-400">System Status</span>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { googleSignIn } from "@/app/actions/auth";
 
 interface GoogleSignInButtonProps {
   variant?: "default" | "outline" | "ghost";
@@ -23,11 +24,12 @@ export default function GoogleSignInButton({
   const handleSignIn = async () => {
     setIsLoading(true);
     try {
-      // Redirect to NextAuth sign-in with Google provider
-      window.location.href = "/api/auth/signin?provider=google";
+      // NextAuth v5 - Use server action for sign in
+      await googleSignIn();
     } catch (error) {
       console.error("Error initiating sign-in:", error);
-      setIsLoading(false);
+      // If server action fails, try direct navigation as fallback
+      window.location.href = "/api/auth/signin/google?callbackUrl=/dashboard";
     }
   };
 

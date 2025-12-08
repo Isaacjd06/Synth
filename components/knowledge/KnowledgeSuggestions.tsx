@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -8,7 +8,7 @@ import {
   Workflow, ChevronDown, ChevronUp 
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/badge";
 
 interface Suggestion {
@@ -18,45 +18,35 @@ interface Suggestion {
   description: string;
   actionLabel?: string;
   actionLink?: string;
+  priority?: string;
 }
-
-const mockSuggestions: Suggestion[] = [
-  {
-    id: "1",
-    type: "definition",
-    title: "Define 'ICP' in your glossary",
-    description: "You mentioned 'ICP' in your notes but haven't defined it.",
-    actionLabel: "Add Definition"
-  },
-  {
-    id: "2",
-    type: "connection",
-    title: "Connect Slack",
-    description: "You listed Slack as a tool. Connect it to enable Slack automations.",
-    actionLabel: "Go to Connections",
-    actionLink: "/settings/connections"
-  },
-  {
-    id: "3",
-    type: "rule",
-    title: "Add response time rule",
-    description: "Consider adding a rule about maximum response times for customer inquiries.",
-    actionLabel: "Add Rule"
-  },
-  {
-    id: "4",
-    type: "workflow",
-    title: "Create a lead follow-up workflow",
-    description: "Based on your processes, you might want to automate lead follow-ups.",
-    actionLabel: "Create Workflow",
-    actionLink: "/workflows/create"
-  }
-];
 
 export default function KnowledgeSuggestions() {
   const router = useRouter();
-  const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Load suggestions on mount
+  useEffect(() => {
+    loadSuggestions();
+  }, []);
+
+  const loadSuggestions = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/knowledge/suggestions");
+      const data = await response.json();
+      
+      if (data.ok && data.suggestions) {
+        setSuggestions(data.suggestions);
+      }
+    } catch (error) {
+      console.error("Error loading suggestions:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getIcon = (type: Suggestion['type']) => {
     switch (type) {

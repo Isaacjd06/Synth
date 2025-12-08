@@ -6,7 +6,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
 import { logError } from "@/lib/error-logger";
 import { logAudit } from "@/lib/audit";
 
@@ -37,7 +36,7 @@ export async function setupUserAfterLogin(
       avatar_url?: string;
       email_verified?: boolean;
       provider?: string;
-      trialEndsAt?: Date;
+      trial_ends_at?: Date;
     } = {
       last_login_at: new Date(),
     };
@@ -59,7 +58,7 @@ export async function setupUserAfterLogin(
     if (isNewUser) {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + 3); // 3-day trial
-      updateData.trialEndsAt = trialEndsAt;
+      updateData.trial_ends_at = trialEndsAt;
     }
 
     // Update user with profile data and trial setup
@@ -73,7 +72,7 @@ export async function setupUserAfterLogin(
       await logAudit("user.created", userId, {
         provider: account?.provider || "google",
         has_trial: true,
-        trial_ends_at: updateData.trialEndsAt,
+        trial_ends_at: updateData.trial_ends_at,
       }).catch(() => {
         // Ignore audit logging errors
       });
@@ -100,7 +99,7 @@ export async function ensureStripeCustomer(
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { stripeCustomerId: true },
+      select: { stripe_customer_id: true },
     });
 
     if (!user) {
@@ -108,17 +107,30 @@ export async function ensureStripeCustomer(
     }
 
     // Create Stripe customer if user doesn't have one
-    if (!user.stripeCustomerId && email) {
-      const customer = await stripe.customers.create({
-        email,
-        metadata: { userId },
-      });
+    if (!user.stripe_customer_id && email) {
+      try {
+        // Dynamically import stripe to avoid module load errors if STRIPE_SECRET_KEY is missing
+        const { stripe } = await import("@/lib/stripe");
+        if (stripe) {
+          const customer = await stripe.customers.create({
+            email,
+            metadata: { userId },
+          });
 
-      // Update user with Stripe customer ID
-      await prisma.user.update({
-        where: { id: userId },
-        data: { stripeCustomerId: customer.id },
-      });
+          // Update user with Stripe customer ID
+          await prisma.user.update({
+            where: { id: userId },
+            data: { stripe_customer_id: customer.id },
+          });
+        }
+      } catch (stripeError) {
+        // If Stripe fails (e.g., missing key), log but don't throw
+        console.error("Failed to create Stripe customer:", stripeError);
+        logError("lib/auth-user-setup (ensureStripeCustomer)", stripeError as Error, {
+          userId,
+          email,
+        });
+      }
     }
   } catch (error: unknown) {
     logError("lib/auth-user-setup (ensureStripeCustomer)", error as Error, {
@@ -139,7 +151,7 @@ export async function isNewUser(userId: string): Promise<boolean> {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { created_at: true, trialEndsAt: true, subscriptionStatus: true },
+      select: { created_at: true, trial_ends_at: true, subscription_status: true },
     });
 
     if (!user) {
@@ -152,7 +164,7 @@ export async function isNewUser(userId: string): Promise<boolean> {
 
     // Also consider new if no trial and no subscription
     const hasNoTrialOrSubscription =
-      !user.trialEndsAt && (!user.subscriptionStatus || user.subscriptionStatus === "inactive");
+      !user.trial_ends_at && (!user.subscription_status || user.subscription_status === "inactive");
 
     return isRecentlyCreated || hasNoTrialOrSubscription;
   } catch (error: unknown) {

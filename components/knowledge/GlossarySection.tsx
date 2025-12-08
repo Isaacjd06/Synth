@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash2, Save, X, BookOpen, Search, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 interface GlossaryEntry {
   id: string;
@@ -16,11 +17,7 @@ interface GlossaryEntry {
 }
 
 export default function GlossarySection() {
-  const [entries, setEntries] = useState<GlossaryEntry[]>([
-    { id: "1", term: "ICP", definition: "Ideal Customer Profile - A description of the type of company or individual that would benefit most from your product or service." },
-    { id: "2", term: "MRR", definition: "Monthly Recurring Revenue - The predictable monthly revenue from subscriptions." },
-    { id: "3", term: "CAC", definition: "Customer Acquisition Cost - The total cost of acquiring a new customer." },
-  ]);
+  const [entries, setEntries] = useState<GlossaryEntry[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTerm, setEditTerm] = useState("");
@@ -29,6 +26,29 @@ export default function GlossarySection() {
   const [newTerm, setNewTerm] = useState("");
   const [newDefinition, setNewDefinition] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Load entries on mount
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
+  const loadEntries = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/knowledge/glossary");
+      const data = await response.json();
+      
+      if (data.ok && data.entries) {
+        setEntries(data.entries);
+      }
+    } catch (error) {
+      console.error("Error loading glossary:", error);
+      toast.error("Failed to load glossary");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Sort entries alphabetically
   const sortedEntries = [...entries].sort((a, b) => 
@@ -45,18 +65,35 @@ export default function GlossarySection() {
     if (!newTerm.trim() || !newDefinition.trim()) return;
     
     setIsSaving(true);
-    // TODO: Replace with real API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setEntries([...entries, { 
-      id: crypto.randomUUID(), 
-      term: newTerm.trim(), 
-      definition: newDefinition.trim() 
-    }]);
-    setNewTerm("");
-    setNewDefinition("");
-    setIsAdding(false);
-    setIsSaving(false);
+    try {
+      const response = await fetch("/api/knowledge/glossary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          term: newTerm.trim(),
+          definition: newDefinition.trim(),
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.ok && data.entry) {
+        setEntries([...entries, data.entry]);
+        setNewTerm("");
+        setNewDefinition("");
+        setIsAdding(false);
+        toast.success("Glossary term added");
+      } else {
+        throw new Error(data.error || "Failed to add term");
+      }
+    } catch (error) {
+      console.error("Error adding term:", error);
+      toast.error(error instanceof Error && error.message.includes("already exists") 
+        ? "Term already exists" 
+        : "Failed to add glossary term");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEdit = (entry: GlossaryEntry) => {
@@ -69,18 +106,36 @@ export default function GlossarySection() {
     if (!editTerm.trim() || !editDefinition.trim() || !editingId) return;
     
     setIsSaving(true);
-    // TODO: Replace with real API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setEntries(entries.map(e => 
-      e.id === editingId 
-        ? { ...e, term: editTerm.trim(), definition: editDefinition.trim() } 
-        : e
-    ));
-    setEditingId(null);
-    setEditTerm("");
-    setEditDefinition("");
-    setIsSaving(false);
+    try {
+      const response = await fetch("/api/knowledge/glossary", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          term: editTerm.trim(),
+          definition: editDefinition.trim(),
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.ok && data.entry) {
+        setEntries(entries.map(e => e.id === editingId ? data.entry : e));
+        setEditingId(null);
+        setEditTerm("");
+        setEditDefinition("");
+        toast.success("Glossary term updated");
+      } else {
+        throw new Error(data.error || "Failed to update term");
+      }
+    } catch (error) {
+      console.error("Error updating term:", error);
+      toast.error(error instanceof Error && error.message.includes("already exists")
+        ? "Term already exists"
+        : "Failed to update glossary term");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancelEdit = () => {
@@ -90,12 +145,48 @@ export default function GlossarySection() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this term?")) return;
+    
     setIsSaving(true);
-    // TODO: Replace with real API call
-    await new Promise(resolve => setTimeout(resolve, 300));
-    setEntries(entries.filter(e => e.id !== id));
-    setIsSaving(false);
+    try {
+      const response = await fetch(`/api/knowledge/glossary?id=${id}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+      
+      if (data.ok) {
+        setEntries(entries.filter(e => e.id !== id));
+        toast.success("Glossary term deleted");
+      } else {
+        throw new Error(data.error || "Failed to delete term");
+      }
+    } catch (error) {
+      console.error("Error deleting term:", error);
+      toast.error("Failed to delete glossary term");
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <BookOpen className="w-5 h-5 text-primary" />
+            Glossary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-800 rounded animate-pulse" />
+            <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">

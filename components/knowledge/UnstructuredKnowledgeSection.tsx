@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Save, Clock, Check, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 

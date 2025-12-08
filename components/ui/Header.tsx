@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Badge from "@/components/ui/Badge";
 import { LogOut, CreditCard, LayoutDashboard } from "lucide-react";
 import { useSubscription } from "@/lib/useSubscription";
+import { googleSignIn } from "@/app/actions/auth";
 
 export default function Header() {
   const { user, isActive, isTrialValid, isLoading } = useSubscription();
@@ -21,8 +22,13 @@ export default function Header() {
 
   const hasValidSubscription = isActive || isTrialValid;
 
-  const handleSignIn = () => {
-    router.push("/api/auth/signin?provider=google");
+  const handleSignIn = async () => {
+    // NextAuth v5 - Use server action for sign in
+    try {
+      await googleSignIn();
+    } catch (error) {
+      console.error("Error signing in:", error);
+    }
   };
 
   const handleSignOut = async () => {

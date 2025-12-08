@@ -10,8 +10,9 @@
 
 import Stripe from "stripe";
 
-// Validate required environment variable
-if (!process.env.STRIPE_SECRET_KEY) {
+// Validate required environment variable (only in production)
+// In development, allow missing key to avoid blocking auth setup
+if (!process.env.STRIPE_SECRET_KEY && process.env.NODE_ENV === "production") {
   throw new Error(
     "STRIPE_SECRET_KEY is not set in environment variables. " +
     "Please add it to your .env.local file."
@@ -25,9 +26,14 @@ let stripeInstance: Stripe | null = null;
 /**
  * Get or create the Stripe client instance (singleton pattern)
  */
-function getStripeClient(): Stripe {
+function getStripeClient(): Stripe | null {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.warn("STRIPE_SECRET_KEY is not set. Stripe features will be disabled.");
+    return null;
+  }
+  
   if (!stripeInstance) {
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: "2025-11-17.clover", // API version matching stripe package v20.0.0
       typescript: true,
     });
@@ -40,13 +46,17 @@ function getStripeClient(): Stripe {
  * 
  * Use this in API routes, server actions, and server components.
  * 
+ * ⚠️ May be null if STRIPE_SECRET_KEY is not set.
+ * 
  * @example
  * ```ts
  * import { stripe } from "@/lib/stripe";
  * 
- * const customer = await stripe.customers.create({
- *   email: "user@example.com",
- * });
+ * if (stripe) {
+ *   const customer = await stripe.customers.create({
+ *     email: "user@example.com",
+ *   });
+ * }
  * ```
  */
 export const stripe = getStripeClient();

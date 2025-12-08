@@ -61,7 +61,10 @@
       "Bash(while read file)",
       "Bash(do grep -q \"try {\" \"$file\")",
       "Bash(echo:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(if exist .env.local type .env.local)",
+      "Bash(taskkill:*)",
+      "Bash(timeout /t 2 /nobreak)"
     ],
     "deny": [],
     "ask": []

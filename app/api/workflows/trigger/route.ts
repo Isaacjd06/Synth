@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     if (!runResult.ok) {
       // Save failed execution to Neon (Prisma)
-      await prisma.execution.create({
+      await prisma.executions.create({
         data: {
           workflow_id: workflow.id,
           user_id: userId,

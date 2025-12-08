@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateWithAccessInfo } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { getWorkflow, PipedreamAPIError } from "@/lib/pipedreamClient";
 
 /**
  * GET /api/dashboard/updates
@@ -57,6 +58,7 @@ export async function GET() {
         },
         recentWorkflows: [],
         recentExecutions: [],
+        systemStatus: "unknown",
       }, {
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +66,38 @@ export async function GET() {
       });
     }
 
-    // Calculate statistics
+    // First, sync workflow status from Pipedream for accurate counts
+    const workflowsWithPipedreamIds = await prisma.workflows.findMany({
+      where: {
+        user_id: userId,
+        n8n_workflow_id: { not: null },
+      },
+      select: {
+        id: true,
+        n8n_workflow_id: true,
+      },
+    });
+
+    // Sync status from Pipedream (in background, don't block on errors)
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const pipedreamWorkflow = await getWorkflow(workflow.n8n_workflow_id);
+        await prisma.workflows.update({
+          where: { id: workflow.id },
+          data: {
+            active: pipedreamWorkflow.active || false,
+            pipedream_deployment_state: pipedreamWorkflow.active ? "active" : "inactive",
+          },
+        });
+      } catch (error) {
+        // Log but don't fail - continue with database values
+        console.warn(`Failed to sync workflow ${workflow.id} from Pipedream:`, error);
+      }
+    }
+
+    // Calculate statistics from synced data
     // Wrap database operations in try-catch to handle connection errors
     const activeWorkflowsCount = await prisma.workflows.count({
       where: {
@@ -73,31 +106,59 @@ export async function GET() {
       },
     });
 
-    const totalExecutions = await prisma.execution.count({
-      where: {
-        user_id: userId,
-      },
-    });
-
+    // Aggregate execution counts from Pipedream for all workflows
+    let totalExecutions = 0;
+    let executionsLast24h = 0;
+    let successExecutions = 0;
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const executionsLast24h = await prisma.execution.count({
-      where: {
-        user_id: userId,
-        created_at: {
-          gte: yesterday,
-        },
-      },
-    });
+    // Get execution counts from Pipedream for each workflow
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const { listExecutions } = await import("@/lib/pipedream");
+        const executions = await listExecutions(workflow.n8n_workflow_id);
+        
+        totalExecutions += executions.length;
+        
+        // Count executions from last 24h and successes
+        for (const exec of executions) {
+          const execDate = new Date(exec.started_at);
+          if (execDate >= yesterday) {
+            executionsLast24h++;
+          }
+          if (exec.status === "success") {
+            successExecutions++;
+          }
+        }
+      } catch (error) {
+        // Log but continue - use database counts as fallback
+        console.warn(`Failed to get executions from Pipedream for workflow ${workflow.id}:`, error);
+      }
+    }
 
-    // Calculate success rate
-    const successExecutions = await prisma.execution.count({
-      where: {
-        user_id: userId,
-        status: "success",
-      },
-    });
+    // Fallback to database counts if no Pipedream data available
+    if (totalExecutions === 0 && workflowsWithPipedreamIds.length === 0) {
+      totalExecutions = await prisma.executions.count({
+        where: { user_id: userId },
+      });
+      
+      executionsLast24h = await prisma.executions.count({
+        where: {
+          user_id: userId,
+          created_at: { gte: yesterday },
+        },
+      });
+      
+      successExecutions = await prisma.executions.count({
+        where: {
+          user_id: userId,
+          status: "success",
+        },
+      });
+    }
 
     const successRate =
       totalExecutions > 0 ? (successExecutions / totalExecutions) * 100 : 0;
@@ -105,23 +166,31 @@ export async function GET() {
     // Get recent notable events
     const updates: Array<Record<string, unknown>> = [];
 
-    // Check for workflows that never ran
-    const workflows = await prisma.workflows.findMany({
-      where: {
-        user_id: userId,
-        active: true,
-      },
-      include: {
-        executions: {
-          take: 1,
-          orderBy: {
-            created_at: "desc",
-          },
-        },
-      },
-    });
-
-    const neverRunWorkflows = workflows.filter((w) => w.executions.length === 0);
+    // Check for workflows that never ran (using Pipedream data)
+    const neverRunWorkflows: Array<{ id: string; name: string }> = [];
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const { listExecutions } = await import("@/lib/pipedream");
+        const executions = await listExecutions(workflow.n8n_workflow_id);
+        
+        if (executions.length === 0) {
+          const dbWorkflow = await prisma.workflows.findUnique({
+            where: { id: workflow.id },
+            select: { name: true },
+          });
+          
+          neverRunWorkflows.push({
+            id: workflow.id,
+            name: dbWorkflow?.name || "Unknown",
+          });
+        }
+      } catch (error) {
+        // Continue with next workflow
+      }
+    }
+    
     if (neverRunWorkflows.length > 0) {
       updates.push({
         type: "workflow_never_run",
@@ -132,16 +201,36 @@ export async function GET() {
       });
     }
 
-    // Check for recent failures
-    const recentFailures = await prisma.execution.count({
-      where: {
-        user_id: userId,
-        status: "failure",
-        created_at: {
-          gte: yesterday,
+    // Check for recent failures from Pipedream
+    let recentFailures = 0;
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const { listExecutions } = await import("@/lib/pipedream");
+        const executions = await listExecutions(workflow.n8n_workflow_id);
+        
+        for (const exec of executions) {
+          const execDate = new Date(exec.started_at);
+          if (execDate >= yesterday && (exec.status === "failure" || exec.status === "error")) {
+            recentFailures++;
+          }
+        }
+      } catch (error) {
+        // Continue with next workflow
+      }
+    }
+    
+    // Fallback to database if no Pipedream data
+    if (recentFailures === 0 && workflowsWithPipedreamIds.length === 0) {
+      recentFailures = await prisma.executions.count({
+        where: {
+          user_id: userId,
+          status: "failure",
+          created_at: { gte: yesterday },
         },
-      },
-    });
+      });
+    }
 
     if (recentFailures > 0) {
       updates.push({
@@ -153,40 +242,42 @@ export async function GET() {
       });
     }
 
-    // Check for workflows with low success rate
-    const workflowsWithStats = await prisma.workflows.findMany({
-      where: {
-        user_id: userId,
-        active: true,
-      },
-      include: {
-        executions: {
-          select: {
-            status: true,
-          },
-        },
-      },
-    });
-
-    workflowsWithStats.forEach((workflow) => {
-      const executions = workflow.executions;
-      if (executions.length >= 5) {
-        // Only check workflows with at least 5 executions
-        const failures = executions.filter((e) => e.status === "failure").length;
-        const failureRate = (failures / executions.length) * 100;
-        if (failureRate > 50) {
-          updates.push({
-            type: "low_success_rate",
-            title: `Workflow "${workflow.name}" has a ${failureRate.toFixed(0)}% failure rate`,
-            message: `This workflow may need attention - ${failures} out of ${executions.length} executions failed.`,
-            priority: "high",
-            workflowId: workflow.id,
-            workflowName: workflow.name,
-            createdAt: new Date(),
-          });
+    // Check for workflows with low success rate (using Pipedream data)
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const { listExecutions } = await import("@/lib/pipedream");
+        const executions = await listExecutions(workflow.n8n_workflow_id);
+        
+        if (executions.length >= 5) {
+          // Only check workflows with at least 5 executions
+          const failures = executions.filter(
+            (e) => e.status === "failure" || e.status === "error"
+          ).length;
+          const failureRate = (failures / executions.length) * 100;
+          
+          if (failureRate > 50) {
+            const dbWorkflow = await prisma.workflows.findUnique({
+              where: { id: workflow.id },
+              select: { name: true },
+            });
+            
+            updates.push({
+              type: "low_success_rate",
+              title: `Workflow "${dbWorkflow?.name || "Unknown"}" has a ${failureRate.toFixed(0)}% failure rate`,
+              message: `This workflow may need attention - ${failures} out of ${executions.length} executions failed.`,
+              priority: "high",
+              workflowId: workflow.id,
+              workflowName: dbWorkflow?.name || "Unknown",
+              createdAt: new Date(),
+            });
+          }
         }
+      } catch (error) {
+        // Continue with next workflow
       }
-    });
+    }
 
     // Sort updates by priority (high first) and date (newest first)
     updates.sort((a, b) => {
@@ -218,28 +309,82 @@ export async function GET() {
       },
     });
 
-    // Get recent executions (last 3)
-    const recentExecutions = await prisma.execution.findMany({
-      where: {
-        user_id: userId,
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-      take: 3,
-      select: {
-        id: true,
-        workflow_id: true,
-        status: true,
-        created_at: true,
-        workflow: {
-          select: {
-            id: true,
-            name: true,
+    // Get recent executions from Pipedream (aggregate from all workflows)
+    const allRecentExecutions: Array<{
+      id: string;
+      workflow_id: string;
+      status: string;
+      created_at: Date;
+      workflow: { id: string; name: string };
+    }> = [];
+
+    for (const workflow of workflowsWithPipedreamIds) {
+      if (!workflow.n8n_workflow_id) continue;
+      
+      try {
+        const { listExecutions } = await import("@/lib/pipedream");
+        const executions = await listExecutions(workflow.n8n_workflow_id);
+        
+        // Get workflow name from database
+        const dbWorkflow = await prisma.workflows.findUnique({
+          where: { id: workflow.id },
+          select: { name: true },
+        });
+        
+        for (const exec of executions.slice(0, 10)) { // Get last 10 from each workflow
+          allRecentExecutions.push({
+            id: exec.id,
+            workflow_id: workflow.id,
+            status: exec.status,
+            created_at: new Date(exec.started_at),
+            workflow: {
+              id: workflow.id,
+              name: dbWorkflow?.name || "Unknown Workflow",
+            },
+          });
+        }
+      } catch (error) {
+        // Continue with next workflow
+      }
+    }
+
+    // Sort by date and take most recent 3
+    allRecentExecutions.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+    const recentExecutions = allRecentExecutions.slice(0, 3);
+
+    // Fallback to database if no Pipedream executions
+    if (recentExecutions.length === 0) {
+      const dbExecutions = await prisma.executions.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: "desc" },
+        take: 3,
+        select: {
+          id: true,
+          workflow_id: true,
+          status: true,
+          created_at: true,
+          workflow: {
+            select: { id: true, name: true },
           },
         },
-      },
-    });
+      });
+      recentExecutions.push(...dbExecutions);
+    }
+
+    // Determine system status based on Pipedream connectivity
+    let systemStatus = "operational";
+    try {
+      // Quick check: if we have workflows with Pipedream IDs, try to verify connectivity
+      if (workflowsWithPipedreamIds.length > 0 && workflowsWithPipedreamIds[0].n8n_workflow_id) {
+        await getWorkflow(workflowsWithPipedreamIds[0].n8n_workflow_id);
+        systemStatus = "operational";
+      }
+    } catch (error) {
+      // If we can't reach Pipedream, mark as degraded
+      if (error instanceof PipedreamAPIError) {
+        systemStatus = "degraded";
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -252,6 +397,7 @@ export async function GET() {
       },
       recentWorkflows,
       recentExecutions,
+      systemStatus,
     }, {
       headers: {
         "Content-Type": "application/json",
@@ -274,6 +420,7 @@ export async function GET() {
         updates: [],
         recentWorkflows: [],
         recentExecutions: [],
+        systemStatus: "error",
       },
       { 
         status: 500,

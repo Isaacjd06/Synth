@@ -115,7 +115,7 @@ export async function POST(
     }
 
     // 6. Create execution record in the executions table
-    const execution = await prisma.execution.create({
+    const execution = await prisma.executions.create({
       data: {
         workflow_id: workflow.id,
         user_id: userId,

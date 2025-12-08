@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { deleteWorkflow as deletePipedreamWorkflow } from "@/lib/pipedreamClient";
+import { logError } from "@/lib/error-logger";
 
 interface WorkflowDeleteRequestBody {
   id: string;
@@ -39,7 +41,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Hard delete (simple and clean for MVP)
+    // Delete from Pipedream if workflow has a Pipedream ID
+    if (existing.n8n_workflow_id) {
+      try {
+        await deletePipedreamWorkflow(existing.n8n_workflow_id);
+      } catch (error) {
+        // Log error but don't fail the deletion - we still want to delete from database
+        logError("app/api/workflows/delete (Pipedream)", error, {
+          workflow_id: id,
+          pipedream_workflow_id: existing.n8n_workflow_id,
+        });
+        // Continue with database deletion even if Pipedream deletion fails
+      }
+    }
+
+    // Hard delete from database
     await prisma.workflows.delete({
       where: { id },
     });
@@ -48,6 +64,7 @@ export async function POST(req: Request) {
     await logAudit("workflow.delete", userId, {
       workflow_id: id,
       workflow_name: existing.name,
+      pipedream_workflow_id: existing.n8n_workflow_id || null,
     });
 
     return NextResponse.json(

@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get existing pipedream_execution_ids to avoid duplicates (using n8n IDs temporarily stored here)
-    const existing = await prisma.execution.findMany({
+    const existing = await prisma.executions.findMany({
       where: {
         pipedream_execution_id: { not: null },
         user_id: userId, // Only check user's executions
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     if (toInsert.length > 0) {
       try {
         // Prisma doesn't support bulk insert directly, so we'll use createMany
-        const result = await prisma.execution.createMany({
+        const result = await prisma.executions.createMany({
           data: toInsert,
           skipDuplicates: true,
         });

@@ -27,7 +27,7 @@ export default async function ExecutionsPage() {
     pipedream_execution_id: string | null;
     created_at: Date;
     finished_at: Date | null;
-    workflow: {
+    workflows: {
       id: string;
       name: string;
     };
@@ -37,12 +37,12 @@ export default async function ExecutionsPage() {
   let error: string | null = null;
 
   try {
-    executions = await prisma.execution.findMany({
+    executions = await prisma.executions.findMany({
       where: {
         user_id: session.user.id,
       },
       include: {
-        workflow: {
+        workflows: {
           select: {
             id: true,
             name: true,

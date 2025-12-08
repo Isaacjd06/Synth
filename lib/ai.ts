@@ -1,7 +1,11 @@
 import { WorkflowBlueprint, WorkflowBlueprintSchema } from "@/lib/schemas/workflowSchema";
+import { fetchKnowledgeContext, formatKnowledgeContextForPrompt } from "@/lib/knowledge-context";
+import { BRANDING_INSTRUCTIONS } from "@/lib/ai-branding";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+// Note: ANTHROPIC_BACKEND_API_KEY is reserved for future n8n integration
+// Currently, OpenAI handles all AI operations (chat + workflow generation)
+const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY; // Reserved for future use
 
 type GenerateWorkflowBlueprintResult =
   | {
@@ -15,10 +19,14 @@ type GenerateWorkflowBlueprintResult =
 
 /**
  * Generates a workflow blueprint from natural language intent using AI
- * Supports both OpenAI and Anthropic (Claude) APIs
+ * Uses OpenAI API for all workflow generation (Anthropic backend API reserved for future n8n integration)
+ * 
+ * @param intent - Natural language description of the workflow
+ * @param userId - Optional user ID to fetch knowledge base context
  */
 export async function generateWorkflowBlueprint(
-  intent: string
+  intent: string,
+  userId?: string
 ): Promise<GenerateWorkflowBlueprintResult> {
   if (!intent || intent.trim().length === 0) {
     return {
@@ -27,23 +35,33 @@ export async function generateWorkflowBlueprint(
     };
   }
 
-  // Prefer OpenAI if available, otherwise use Anthropic
-  if (OPENAI_API_KEY) {
-    return generateWithOpenAI(intent);
-  } else if (ANTHROPIC_API_KEY) {
-    return generateWithAnthropic(intent);
-  } else {
+  // Fetch knowledge base context if userId is provided
+  let knowledgeContext = "";
+  if (userId) {
+    try {
+      const context = await fetchKnowledgeContext(userId);
+      knowledgeContext = formatKnowledgeContextForPrompt(context);
+    } catch (error) {
+      console.warn("Failed to fetch knowledge context:", error);
+      // Continue without knowledge context if fetch fails
+    }
+  }
+
+  // Use OpenAI for workflow generation (Anthropic backend API is reserved for future n8n integration)
+  if (!OPENAI_API_KEY) {
     return {
       ok: false,
-      error: "No AI API key configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in your environment variables.",
+      error: "OPENAI_API_KEY is not configured. OpenAI is required for workflow generation.",
     };
   }
+
+  return generateWithOpenAI(intent, knowledgeContext);
 }
 
 /**
  * Generate workflow blueprint using OpenAI
  */
-async function generateWithOpenAI(intent: string): Promise<GenerateWorkflowBlueprintResult> {
+async function generateWithOpenAI(intent: string, knowledgeContext: string = ""): Promise<GenerateWorkflowBlueprintResult> {
   if (!OPENAI_API_KEY) {
     return {
       ok: false,
@@ -51,9 +69,16 @@ async function generateWithOpenAI(intent: string): Promise<GenerateWorkflowBluep
     };
   }
 
-  const systemPrompt = `You are a workflow automation expert. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
+  // Build system prompt with knowledge context if available
+  let systemPrompt = `You are a workflow automation expert for Synth. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
 
-CRITICAL RULES:
+${BRANDING_INSTRUCTIONS}`;
+
+  if (knowledgeContext) {
+    systemPrompt += `\n\n## BUSINESS CONTEXT\nYou have access to the following business knowledge that you MUST use when generating workflows:\n\n${knowledgeContext}\n\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n`;
+  }
+
+  systemPrompt += `\n\nCRITICAL RULES:
 1. You MUST return ONLY valid JSON that matches this exact structure:
 {
   "name": "string (required)",
@@ -199,18 +224,29 @@ Return ONLY valid JSON matching the exact structure specified.`;
 
 /**
  * Generate workflow blueprint using Anthropic (Claude)
+ * 
+ * NOTE: This function is reserved for future n8n integration.
+ * Currently, OpenAI handles all workflow generation.
+ * This function is kept for future use when n8n becomes part of Synth's automation engine.
  */
-async function generateWithAnthropic(intent: string): Promise<GenerateWorkflowBlueprintResult> {
-  if (!ANTHROPIC_API_KEY) {
+async function generateWithAnthropic(intent: string, knowledgeContext: string = ""): Promise<GenerateWorkflowBlueprintResult> {
+  if (!ANTHROPIC_BACKEND_API_KEY) {
     return {
       ok: false,
-      error: "ANTHROPIC_API_KEY is not configured",
+      error: "ANTHROPIC_BACKEND_API_KEY is not configured",
     };
   }
 
-  const systemPrompt = `You are a workflow automation expert. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
+  // Build system prompt with knowledge context if available
+  let systemPrompt = `You are a workflow automation expert for Synth. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
 
-CRITICAL RULES:
+${BRANDING_INSTRUCTIONS}`;
+
+  if (knowledgeContext) {
+    systemPrompt += `\n\n## BUSINESS CONTEXT\nYou have access to the following business knowledge that you MUST use when generating workflows:\n\n${knowledgeContext}\n\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n`;
+  }
+
+  systemPrompt += `\n\nCRITICAL RULES:
 1. You MUST return ONLY valid JSON that matches this exact structure:
 {
   "name": "string (required)",
@@ -249,7 +285,7 @@ Return ONLY valid JSON matching the exact structure specified.`;
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": ANTHROPIC_BACKEND_API_KEY,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -352,15 +388,13 @@ export async function detectChatIntent(message: string): Promise<DetectIntentRes
     };
   }
 
-  // Prefer OpenAI if available, otherwise use Anthropic
-  if (OPENAI_API_KEY) {
-    return detectIntentWithOpenAI(message);
-  } else if (ANTHROPIC_API_KEY) {
-    return detectIntentWithAnthropic(message);
-  } else {
-    // Fallback to simple keyword matching if no AI API key
+  // Use OpenAI for all chat intent detection (Anthropic reserved for future n8n)
+  if (!OPENAI_API_KEY) {
+    // Fallback to simple keyword matching if no OpenAI API key
     return detectIntentWithKeywords(message);
   }
+  
+  return detectIntentWithOpenAI(message);
 }
 
 /**
@@ -374,7 +408,11 @@ async function detectIntentWithOpenAI(message: string): Promise<DetectIntentResu
     };
   }
 
-  const systemPrompt = `You are an intent classifier for a workflow automation platform. Analyze user messages and classify them into one of these categories:
+  const systemPrompt = `You are an intent classifier for Synth, a workflow automation platform.
+
+${BRANDING_INSTRUCTIONS}
+
+Analyze user messages and classify them into one of these categories:
 
 1. "create_workflow" - User wants to create a new workflow (e.g., "create a workflow to send emails", "make a workflow that...", "I need a workflow for...")
 2. "update_workflow" - User wants to modify an existing workflow (e.g., "update workflow X", "change the workflow", "modify workflow")
@@ -447,16 +485,24 @@ Return ONLY a JSON object with this structure:
 
 /**
  * Detect intent using Anthropic
+ * 
+ * NOTE: This function is reserved for future n8n integration.
+ * Currently, OpenAI handles all chat intent detection.
+ * This function is kept for future use when n8n becomes part of Synth's automation engine.
  */
 async function detectIntentWithAnthropic(message: string): Promise<DetectIntentResult> {
-  if (!ANTHROPIC_API_KEY) {
+  if (!ANTHROPIC_BACKEND_API_KEY) {
     return {
       ok: false,
-      error: "ANTHROPIC_API_KEY is not configured",
+      error: "ANTHROPIC_BACKEND_API_KEY is not configured",
     };
   }
 
-  const systemPrompt = `You are an intent classifier for a workflow automation platform. Analyze user messages and classify them into one of these categories:
+  const systemPrompt = `You are an intent classifier for Synth, a workflow automation platform.
+
+${BRANDING_INSTRUCTIONS}
+
+Analyze user messages and classify them into one of these categories:
 
 1. "create_workflow" - User wants to create a new workflow
 2. "update_workflow" - User wants to modify an existing workflow
@@ -470,7 +516,7 @@ Return ONLY a JSON object: {"intent": "category", "confidence": 0.0-1.0}`;
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "x-api-key": ANTHROPIC_BACKEND_API_KEY,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({

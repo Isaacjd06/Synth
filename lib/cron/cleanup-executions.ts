@@ -13,7 +13,7 @@ export async function cleanupExecutions(): Promise<{
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const result = await prisma.execution.deleteMany({
+    const result = await prisma.executions.deleteMany({
       where: {
         created_at: {
           lt: thirtyDaysAgo,

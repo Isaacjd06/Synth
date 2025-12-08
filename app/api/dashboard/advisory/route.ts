@@ -135,14 +135,14 @@ export async function GET() {
     }
 
     // 2. Analyze execution patterns
-    const totalExecutions = await prisma.execution.count({
+    const totalExecutions = await prisma.executions.count({
       where: {
         user_id: userId,
       },
     });
 
     if (totalExecutions > 10) {
-      const successCount = await prisma.execution.count({
+      const successCount = await prisma.executions.count({
         where: {
           user_id: userId,
           status: "success",

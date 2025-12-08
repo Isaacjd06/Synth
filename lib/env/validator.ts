@@ -48,13 +48,13 @@ const REQUIRED_ENV_VARS: EnvVar[] = [
   },
   {
     name: 'UPSTASH_REDIS_REST_URL',
-    required: true,
-    description: 'Upstash Redis REST URL for rate limiting',
+    required: false, // Checked separately based on NODE_ENV
+    description: 'Upstash Redis REST URL for rate limiting (required in production)',
   },
   {
     name: 'UPSTASH_REDIS_REST_TOKEN',
-    required: true,
-    description: 'Upstash Redis REST token for rate limiting',
+    required: false, // Checked separately based on NODE_ENV
+    description: 'Upstash Redis REST token for rate limiting (required in production)',
   },
 ];
 
@@ -88,7 +88,7 @@ const OPTIONAL_ENV_VARS: EnvVar[] = [
 
 /**
  * Validate required environment variables at startup
- * 
+ *
  * Throws an error if any required variables are missing.
  * This prevents the app from starting with invalid configuration.
  */
@@ -99,6 +99,17 @@ export function validateEnv(): EnvValidationResult {
   // Check required variables
   for (const envVar of REQUIRED_ENV_VARS) {
     const value = process.env[envVar.name];
+
+    // Special handling for Redis - only required in production
+    if (envVar.name.startsWith('UPSTASH_REDIS')) {
+      if (process.env.NODE_ENV === 'production' && (!value || value.trim() === '')) {
+        missing.push(envVar.name);
+      } else if (!value || value.trim() === '') {
+        warnings.push(`${envVar.name} is not set (rate limiting disabled in development)`);
+      }
+      continue;
+    }
+
     if (!value || value.trim() === '') {
       missing.push(envVar.name);
     }

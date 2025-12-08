@@ -104,6 +104,7 @@ export async function authenticateUser(): Promise<NextResponse | AuthResult> {
  */
 export async function requireActiveSubscription(
   userId: string,
+  hostname?: string,
 ): Promise<NextResponse | null> {
   const hasAccess = await hasFullAccess(userId);
 
@@ -132,8 +133,11 @@ export async function requireActiveSubscription(
 export async function authenticateAndCheckSubscription(): Promise<
   NextResponse | AuthResult
 > {
-  // 1. Check for API key authentication first
+  // Extract hostname from headers for development detection
   const headersList = await headers();
+  const hostname = headersList.get("host") || undefined;
+  
+  // 1. Check for API key authentication first
   const apiKey = headersList.get("x-api-key");
 
   if (apiKey) {
@@ -145,7 +149,7 @@ export async function authenticateAndCheckSubscription(): Promise<
       }
 
       // Check subscription access
-      const subscriptionCheck = await requireActiveSubscription(userId);
+      const subscriptionCheck = await requireActiveSubscription(userId, hostname);
       if (subscriptionCheck) {
         return subscriptionCheck;
       }
@@ -178,7 +182,7 @@ export async function authenticateAndCheckSubscription(): Promise<
     const userId = session.user.id;
 
     // Check subscription access
-    const subscriptionCheck = await requireActiveSubscription(userId);
+    const subscriptionCheck = await requireActiveSubscription(userId, hostname);
     if (subscriptionCheck) {
       return subscriptionCheck;
     }

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     }
 
     // Save execution log
-    const saved = await prisma.execution.create({
+    const saved = await prisma.executions.create({
       data: {
         workflow_id: workflowId,
         user_id: userId,

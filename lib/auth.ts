@@ -1,8 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
-import type { Adapter } from "next-auth/adapters";
+import { customPrismaAdapter } from "@/lib/prisma-adapter-wrapper";
 import { logAudit } from "@/lib/audit";
 import { logError } from "@/lib/error-logger";
 import { validateEnvOrThrow } from "@/lib/env";
@@ -28,38 +27,77 @@ if (process.env.NODE_ENV !== "test") {
   }
 }
 
+// Validate AUTH_SECRET is set
+if (!process.env.AUTH_SECRET) {
+  throw new Error(
+    "AUTH_SECRET is required. Please set it in your .env.local file.\n" +
+    "Generate one with: openssl rand -base64 32"
+  );
+}
+
+// Test database connection on module load (only in Node.js runtime, not Edge)
+// Edge runtime (middleware) doesn't support Prisma Client
+if (typeof EdgeRuntime === "undefined") {
+  prisma.$connect().catch((error) => {
+    console.error("[AUTH] Failed to connect to database:", error);
+  });
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma) as Adapter,
+  adapter: customPrismaAdapter,
+  secret: process.env.AUTH_SECRET,
+  basePath: "/api/auth",
+  trustHost: true,
+  debug: process.env.NODE_ENV === "development",
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
+      try {
+        console.log("[AUTH] signIn: Called with user:", user?.email, "provider:", account?.provider);
+
       // Always allow sign-in - PrismaAdapter will create the user if needed
-      // User profile setup happens asynchronously after adapter creates user
-      if (user?.email && account?.provider === "google") {
-        // Queue user setup to run after adapter creates user
-        // This ensures we capture Google profile data (avatar, google_id, etc.)
+        if (!user?.email || !account) {
+          console.log("[AUTH] signIn: Missing user email or account, allowing adapter to handle");
+          return true; // Let adapter handle it
+        }
+
+        console.log("[AUTH] signIn: Processing sign-in for", user.email, "provider:", account.provider);
+
+      // For Google OAuth, save profile data after adapter creates user
+      if (account.provider === "google") {
+        try {
+          // Use a longer delay to ensure PrismaAdapter has created the user
         setTimeout(async () => {
           try {
+              console.log("[AUTH] signIn: Checking for user in database...");
             const dbUser = await prisma.user.findUnique({
               where: { email: user.email! },
-              select: {
-                id: true,
-                created_at: true,
-                trialEndsAt: true,
-                subscriptionStatus: true,
-              },
+                select: { id: true, created_at: true },
             });
 
             if (dbUser) {
+                console.log("[AUTH] signIn: User found in database:", dbUser.id);
               const isNew =
                 dbUser.created_at &&
-                new Date().getTime() - new Date(dbUser.created_at).getTime() < 30000;
+                  new Date().getTime() - new Date(dbUser.created_at).getTime() < 10000; // 10 seconds
 
+                if (isNew) {
+                  console.log("[AUTH] signIn: New user detected, setting up profile...");
+                }
+
+                // Save Google profile data
               await setupUserAfterLogin(
                 dbUser.id,
                 {
@@ -68,49 +106,92 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 },
                 {
                   picture: user.image || (profile as { picture?: string })?.picture,
-                  email_verified: true, // Google emails are verified
+                    email_verified: true,
                 },
                 isNew
               );
 
-              await ensureStripeCustomer(dbUser.id, user.email!);
+                // Create Stripe customer if new user
+                if (isNew) {
+                  await ensureStripeCustomer(dbUser.id, user.email!).catch((err) => {
+                    console.error("[AUTH] signIn: Failed to create Stripe customer:", err);
+                  });
+                }
+              } else {
+                console.error("[AUTH] signIn: User not found in database after sign-in! Email:", user.email);
+                logError("lib/auth (signIn callback - user not found)", new Error("User not created by adapter"), {
+                  email: user.email,
+                });
             }
           } catch (error) {
-            // Log but don't block - will retry on next login or session
-            logError("lib/auth (signIn - async user setup)", error as Error, {
+              // Log but don't block sign-in
+              console.error("[AUTH] signIn: Error in user setup:", error);
+              logError("lib/auth (signIn callback - user setup)", error as Error, {
               email: user.email,
             });
           }
-        }, 1000); // Wait 1 second for adapter to create user
+          }, 1000); // Increased delay to 1 second to ensure adapter has created user
+        } catch (error) {
+          // Log but don't block sign-in
+          console.error("[AUTH] signIn: Error in signIn callback:", error);
+        }
       }
-      return true;
-    },
-    async session({ session, user, trigger }) {
-      if (session.user && user) {
-        session.user.id = user.id;
-        // Populate extended user fields from database
-        session.user.google_id = user.google_id;
-        session.user.avatar_url = user.avatar_url;
-        session.user.email_verified = user.email_verified;
-        session.user.provider = user.provider;
-        session.user.last_login_at = user.last_login_at;
-        // Populate Stripe subscription fields (camelCase to match Prisma schema)
-        session.user.stripeCustomerId = user.stripeCustomerId;
-        session.user.stripeSubscriptionId = user.stripeSubscriptionId;
-        session.user.subscriptionStatus = user.subscriptionStatus;
-        session.user.plan = user.plan;
-        session.user.subscriptionStartedAt = user.subscriptionStartedAt;
-        session.user.subscriptionEndsAt = user.subscriptionEndsAt;
-        session.user.trialEndsAt = user.trialEndsAt;
-        session.user.addOns = user.addOns;
-        session.user.stripePaymentMethodId = user.stripePaymentMethodId;
 
-        // Setup user profile data and trial after login (runs asynchronously)
-        // Fetch account info for Google profile data and set up user
-        Promise.all([
-          // Get Google account info and set up user profile
-          prisma.account
-            .findFirst({
+      return true;
+      } catch (error) {
+        console.error("[AUTH] signIn: CRITICAL ERROR in signIn callback:", error);
+        // Always allow sign-in even if there's an error
+      return true;
+      }
+    },
+    async session({ session, user }) {
+      try {
+        console.log("[AUTH] session: Called for user:", user?.id);
+
+        if (!session.user || !user) {
+          console.log("[AUTH] session: Missing session.user or user object");
+          return session;
+        }
+
+        console.log("[AUTH] session: Creating session for user:", user.id);
+
+        // Always include user ID
+        session.user.id = user.id;
+
+        // Populate all user fields from database (safely with nullish coalescing)
+        session.user.google_id = user.google_id ?? null;
+        session.user.avatar_url = user.avatar_url ?? null;
+        session.user.email_verified = user.email_verified ?? null;
+        session.user.provider = user.provider ?? null;
+        session.user.last_login_at = user.last_login_at ?? null;
+
+        // Populate Stripe subscription fields (safely with nullish coalescing)
+        session.user.stripeCustomerId = user.stripeCustomerId ?? null;
+        session.user.stripeSubscriptionId = user.stripeSubscriptionId ?? null;
+        session.user.subscriptionStatus = user.subscriptionStatus ?? null;
+        session.user.plan = user.plan ?? null;
+        session.user.subscriptionStartedAt = user.subscriptionStartedAt ?? null;
+        session.user.subscriptionEndsAt = user.subscriptionEndsAt ?? null;
+        session.user.trialEndsAt = user.trialEndsAt ?? null;
+        session.user.addOns = user.addOns ?? null;
+        session.user.stripePaymentMethodId = user.stripePaymentMethodId ?? null;
+
+        // Update last_login_at (fire-and-forget, don't await)
+        prisma.user
+          .update({
+            where: { id: user.id },
+            data: { last_login_at: new Date() },
+          })
+          .catch((err) => {
+            // Silently ignore errors - non-critical
+            console.error("Failed to update last_login_at:", err);
+          });
+
+        // Ensure user profile is up to date (fire-and-forget, don't await)
+        // Run asynchronously to not block session creation
+        (async () => {
+          try {
+            const accountData = await prisma.account.findFirst({
               where: {
                 userId: user.id,
                 provider: "google",
@@ -118,56 +199,100 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               select: {
                 providerAccountId: true,
               },
-            })
-            .then(async (accountData) => {
+            });
+
+            if (accountData) {
               const isNew = await isNewUser(user.id);
               await setupUserAfterLogin(
                 user.id,
                 {
                   provider: "google",
-                  providerAccountId: accountData?.providerAccountId || user.google_id || undefined,
+                  providerAccountId: accountData.providerAccountId,
                 },
                 {
                   picture: user.avatar_url || session.user.image || undefined,
-                  email_verified: user.email_verified !== false, // Default to true for Google
+                  email_verified: user.email_verified !== false,
                 },
                 isNew
               );
-            }),
+            }
+
           // Ensure Stripe customer exists
-          ensureStripeCustomer(user.id, session.user.email || ""),
-        ]).catch((error) => {
-          // Log but don't fail session creation - user setup is non-critical
-          logError("lib/auth (session callback - user setup)", error as Error, {
-            userId: user.id,
-          });
-        });
-
-        // Update last_login_at on every session (fire-and-forget)
-        prisma.user
-          .update({
-            where: { id: user.id },
-            data: { last_login_at: new Date() },
-          })
-          .catch(() => {
-            // Ignore errors - non-critical
-          });
-
-        // Log login audit event (fire-and-forget to not slow down auth)
-        logAudit("user.login", user.id, {
-          email: session.user.email,
-          provider: user.provider,
-        }).catch((error) => {
-          // Silently fail - don't break auth if audit logging fails
-          console.error("Failed to log audit event:", error);
+            if (session.user.email) {
+              await ensureStripeCustomer(user.id, session.user.email);
+            }
+          } catch (error) {
+            // Log but don't throw - user setup is non-critical
+            console.error("Error in async user setup:", error);
+          }
+        })();
+      } catch (error) {
+        // If session callback fails, log but return session anyway
+        console.error("Error in session callback:", error);
+        logError("lib/auth (session callback)", error as Error, {
+          userId: user?.id,
         });
       }
+      
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      try {
+        console.log("[AUTH] redirect: Called with url:", url, "baseUrl:", baseUrl);
+        
+        // Only allow NextAuth callback URLs to pass through (not error pages)
+        // Error pages should redirect to dashboard instead
+        if (url.includes("/api/auth/callback") || url.includes("/api/auth/signin")) {
+          console.log("[AUTH] redirect: Allowing NextAuth callback/signin URL:", url);
+          return url;
+        }
+        
+        // If it's an error page, redirect to dashboard instead
+        if (url.includes("/api/auth/error")) {
+          console.log("[AUTH] redirect: Error page detected, redirecting to dashboard instead");
+          const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || baseUrl || "http://localhost:3000";
+          return `${appUrl.replace(/\/$/, "")}/dashboard`;
+        }
+        
+        // Get base URL from environment or use provided baseUrl
+        const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || baseUrl || "http://localhost:3000";
+        const cleanAppUrl = appUrl.replace(/\/$/, "");
+        
+        // If url is relative, make it absolute
+        if (url.startsWith("/")) {
+          const fullUrl = `${cleanAppUrl}${url}`;
+          console.log("[AUTH] redirect: Relative URL, returning:", fullUrl);
+          return fullUrl;
+        }
+        
+        // If url is absolute and on the same origin, allow it
+        try {
+          const urlObj = new URL(url);
+          const appUrlObj = new URL(appUrl);
+          if (urlObj.origin === appUrlObj.origin) {
+            console.log("[AUTH] redirect: Same origin URL, allowing:", url);
+            return url;
+          }
+        } catch {
+          // Invalid URL, fall through to default
+        }
+        
+        // Default: redirect to dashboard after successful signin
+        const dashboardUrl = `${cleanAppUrl}/dashboard`;
+        console.log("[AUTH] redirect: Default redirect to dashboard:", dashboardUrl);
+        return dashboardUrl;
+      } catch (error) {
+        // If redirect callback fails, fall back to dashboard
+        console.error("[AUTH] redirect: Error in redirect callback:", error);
+        const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || baseUrl || "http://localhost:3000";
+        return `${appUrl.replace(/\/$/, "")}/dashboard`;
+      }
+    },
   },
-  pages: {
-    signIn: "/",
-  },
+  // Remove pages configuration - v5 handles this differently
+  // pages: {
+  //   signIn: "/",
+  // },
   session: {
     strategy: "database",
   },

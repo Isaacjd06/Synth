@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Shield, DollarSign, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 
 export default function PricingHero() {
   const trustIndicators = [

@@ -16,6 +16,7 @@ import {
   storeMemory,
   updateMemoryAccess,
 } from "@/lib/memory";
+import { BRANDING_INSTRUCTIONS } from "@/lib/ai-branding";
 
 const chatLimiter = createRateLimiter("chat", 20, 60);
 
@@ -362,9 +363,9 @@ async function generateGeneralResponse(
   memoryContext?: string,
 ): Promise<{ ok: boolean; response?: string; error?: string }> {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY;
 
-  if (!OPENAI_API_KEY && !ANTHROPIC_API_KEY) {
+  if (!OPENAI_API_KEY && !ANTHROPIC_BACKEND_API_KEY) {
     return {
       ok: false,
       error: "No AI API key configured",
@@ -387,8 +388,10 @@ async function generateGeneralResponse(
               {
                 role: "system",
                 content:
-                  "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation." +
-                  (memoryContext ? memoryContext : ""),
+                  `You are a helpful assistant for Synth, a workflow automation platform. Provide friendly, concise responses about workflow automation.
+
+${BRANDING_INSTRUCTIONS}` +
+                  (memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}` : ""),
               },
               {
                 role: "user",
@@ -412,20 +415,22 @@ async function generateGeneralResponse(
           data.choices?.[0]?.message?.content ||
           "I'm here to help with workflow automation.",
       };
-    } else if (ANTHROPIC_API_KEY) {
+    } else if (ANTHROPIC_BACKEND_API_KEY) {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
+          "x-api-key": ANTHROPIC_BACKEND_API_KEY,
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
           model: "claude-3-5-sonnet-20241022",
           max_tokens: 200,
           system:
-            "You are a helpful assistant for a workflow automation platform called Synth. Provide friendly, concise responses about workflow automation." +
-            (memoryContext ? memoryContext : ""),
+            `You are a helpful assistant for Synth, a workflow automation platform. Provide friendly, concise responses about workflow automation.
+
+${BRANDING_INSTRUCTIONS}` +
+            (memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}` : ""),
           messages: [
             {
               role: "user",

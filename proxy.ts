@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // API routes - let them handle their own authentication
@@ -45,14 +45,8 @@ export async function middleware(request: NextRequest) {
       const session = await auth();
 
       if (!session || !session.user) {
-        // For landing page, redirect to sign in
-        if (pathname === "/") {
-          const signInUrl = new URL("/api/auth/signin", request.url);
-          signInUrl.searchParams.set("callbackUrl", pathname);
-          return NextResponse.redirect(signInUrl);
-        }
-        // For other routes, redirect to sign in
-        const signInUrl = new URL("/api/auth/signin", request.url);
+        // Redirect to home page (where sign-in button is)
+        const signInUrl = new URL("/", request.url);
         signInUrl.searchParams.set("callbackUrl", pathname);
         return NextResponse.redirect(signInUrl);
       }
@@ -62,9 +56,11 @@ export async function middleware(request: NextRequest) {
       // For pages, we allow access - they can show minimal UI if needed
       return NextResponse.next();
     } catch (error) {
-      // Log error and redirect to sign-in on auth failure
-      console.error("Auth middleware error:", error);
-      const signInUrl = new URL("/api/auth/signin", request.url);
+      // Log error and redirect to home page on auth failure
+      console.error("Auth proxy error:", error);
+
+      // Redirect to home page (where sign-in button is)
+      const signInUrl = new URL("/", request.url);
       signInUrl.searchParams.set("callbackUrl", pathname);
       signInUrl.searchParams.set("error", "AuthError");
       return NextResponse.redirect(signInUrl);

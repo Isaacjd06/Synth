@@ -25,7 +25,7 @@ export async function GET() {
       };
     }
 
-    const data = await prisma.execution.findMany({
+    const data = await prisma.executions.findMany({
       where: whereClause,
       orderBy: { created_at: "desc" },
     });

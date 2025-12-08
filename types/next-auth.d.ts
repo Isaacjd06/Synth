@@ -29,7 +29,7 @@ declare module "next-auth" {
   interface User {
     id: string;
     email: string;
-    name: string;
+    name?: string | null;
     google_id?: string | null;
     avatar_url?: string | null;
     email_verified?: boolean | null;

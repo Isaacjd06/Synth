@@ -5,30 +5,45 @@ import { auth } from "@/lib/auth";
 
 // Initialize Upstash Redis client
 // Validate environment variables at module load time
+// In development, allow missing Redis vars (rate limiting will be disabled)
 if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-  throw new Error(
-    "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for rate limiting. " +
-    "Please set these environment variables."
-  );
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for rate limiting. " +
+      "Please set these environment variables."
+    );
+  } else {
+    console.warn(
+      "⚠️  UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are not set. " +
+      "Rate limiting is DISABLED in development mode."
+    );
+  }
 }
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
 
 /**
  * Creates a rate limiter instance
  * @param identifier - Unique identifier for this rate limiter (e.g., "chat", "workflow-runs")
  * @param limit - Maximum number of requests allowed
  * @param windowSeconds - Time window in seconds
- * @returns Configured rate limiter instance
+ * @returns Configured rate limiter instance (or null if Redis is not configured)
  */
 export function createRateLimiter(
   identifier: string,
   limit: number,
   windowSeconds: number,
 ) {
+  if (!redis) {
+    // In development without Redis, return null (rate limiting disabled)
+    return null;
+  }
+
   return new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(limit, `${windowSeconds} s`),
@@ -41,13 +56,18 @@ export function createRateLimiter(
  * Helper function to check rate limit and throw error response if exceeded
  * Identifies user by session.user.id if available, otherwise falls back to IP address
  * @param req - Next.js Request object
- * @param limiter - Rate limiter instance from createRateLimiter
+ * @param limiter - Rate limiter instance from createRateLimiter (can be null in dev)
  * @throws NextResponse with 429 status if rate limit exceeded
  */
 export async function rateLimitOrThrow(
   req: Request,
-  limiter: Ratelimit,
+  limiter: Ratelimit | null,
 ): Promise<void> {
+  // Skip rate limiting if limiter is not configured (development mode)
+  if (!limiter) {
+    return;
+  }
+
   // Try to get user ID from session
   let identifier: string;
 

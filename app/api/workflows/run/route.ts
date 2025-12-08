@@ -112,7 +112,7 @@ export async function POST(request: Request) {
 
     if (!runResult.ok) {
       // Log failed execution attempt
-      await prisma.execution.create({
+      await prisma.executions.create({
         data: {
           workflow_id: id,
           user_id: userId,

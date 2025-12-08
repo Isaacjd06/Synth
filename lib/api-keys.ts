@@ -2,7 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "crypto";
 
 /**
  * Generates a new API key for a user.
@@ -13,6 +12,9 @@ import { randomBytes } from "crypto";
  * @returns The raw API key (only shown once)
  */
 export async function generateApiKey(userId: string, name?: string): Promise<string> {
+  // Import crypto only when needed (not at module level) to avoid Edge Runtime issues
+  const { randomBytes } = await import("crypto");
+
   // Generate a random API key (32 bytes = 64 hex characters)
   const rawKey = `sk_${randomBytes(32).toString("hex")}`;
 

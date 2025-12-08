@@ -60,7 +60,7 @@ export async function GET() {
     });
 
     // Get execution count
-    const executionCount = await prisma.execution.count({
+    const executionCount = await prisma.executions.count({
       where: { user_id: userId },
     });
 
