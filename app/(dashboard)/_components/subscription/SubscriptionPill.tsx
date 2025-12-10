@@ -1,8 +1,8 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import type { SubscriptionPlan } from "@/lib/subscription";
-import { getPlanDisplayName, getPlanBadgeColors } from "@/lib/subscription";
+import type { SubscriptionPlan } from "@/lib/subscription-client";
+import { getPlanDisplayName, getPlanBadgeColors } from "@/lib/subscription-client";
 
 interface SubscriptionPillProps {
   plan: SubscriptionPlan;

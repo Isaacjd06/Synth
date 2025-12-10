@@ -53,9 +53,11 @@ export function useSubscription(): UseSubscriptionReturn {
         : null
       : null;
 
-    // Check if subscription is active (active or trialing status)
+    // Check if subscription is active (enum SUBSCRIBED or legacy string values)
     const isActive =
-      subscriptionStatus === "active" || subscriptionStatus === "trialing";
+      subscriptionStatus === "SUBSCRIBED" ||
+      subscriptionStatus === "active" || 
+      subscriptionStatus === "trialing";
 
     // Check if trial is still valid (trial_ends_at is in the future)
     const isTrialValid =

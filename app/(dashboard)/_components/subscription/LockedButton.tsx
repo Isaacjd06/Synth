@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { SubscriptionPlan } from "@/lib/subscription";
+import type { SubscriptionPlan } from "@/lib/subscription-client";
 
 interface LockedButtonProps {
   children: React.ReactNode;

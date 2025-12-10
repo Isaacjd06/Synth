@@ -8,6 +8,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme="dark"
       position="top-right"
       className="toaster group"
+      style={{
+        "--normal-bg": "transparent",
+        "--normal-border": "transparent",
+      } as React.CSSProperties}
       toastOptions={{
         classNames: {
           toast:

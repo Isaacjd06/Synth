@@ -1,7 +1,6 @@
 import "./globals.css";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
-import { Toaster } from "sonner";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Providers } from "./providers";
 
@@ -22,7 +21,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${inter.className} ${plusJakartaSans.variable} overflow-x-hidden`}>
         <Providers>
           {children}
-          <Toaster position="top-right" richColors />
           <Sonner />
         </Providers>
       </body>

@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import { useStripePrices, StripePlan, StripeAddon } from "@/hooks/use-stripe-prices";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import PaymentMethodModal from "@/components/billing/PaymentMethodModal";
 
 // Mock subscription state - set to active subscription for testing
 const mockSubscription: {
@@ -108,10 +109,12 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showChangePlanModal, setShowChangePlanModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [cancelConfirmation, setCancelConfirmation] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [changePlanLoading, setChangePlanLoading] = useState(false);
 
   const hasSubscription = subscription !== null;
   const isCancelConfirmValid = cancelConfirmation === "UNSUBSCRIBE";
@@ -135,7 +138,8 @@ export default function BillingPage() {
   };
 
   const handlePlanSelect = (planId: string) => {
-    setSelectedPlan(selectedPlan === planId ? null : planId);
+    // Always set the selected plan (not toggle)
+    setSelectedPlan(planId);
   };
 
   const handleAddonToggle = (addonId: string) => {
@@ -154,7 +158,7 @@ export default function BillingPage() {
     if (selectedAddons.length > 0) {
       params.set("addons", selectedAddons.join(","));
     }
-    router.push(`/app/checkout?${params.toString()}`);
+    router.push(`/checkout?${params.toString()}`);
   };
 
   const handleCancelSubscription = async () => {
@@ -178,6 +182,58 @@ export default function BillingPage() {
     }
   };
 
+
+  const handleOpenPaymentModal = () => {
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentMethodUpdate = (newCard: { brand: string; last4: string; expiryMonth: number; expiryYear: number }) => {
+    if (subscription) {
+      setSubscription({
+        ...subscription,
+        paymentMethod: {
+          type: "card",
+          last4: newCard.last4,
+          brand: newCard.brand,
+          expiryMonth: newCard.expiryMonth,
+          expiryYear: newCard.expiryYear,
+        },
+      });
+    }
+  };
+
+  const handleConfirmPlanChange = async () => {
+    if (!selectedPlan || selectedPlan === subscription?.planId) return;
+    
+    setChangePlanLoading(true);
+    
+    try {
+      // Simulate API call to change plan
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const newPlan = plans.find(p => p.id === selectedPlan);
+      if (newPlan && subscription) {
+        // Update subscription state with new plan
+        setSubscription({
+          ...subscription,
+          planId: selectedPlan,
+          planName: newPlan.name,
+        });
+        
+        toast.success("Plan Changed", {
+          description: `Your plan has been updated to ${newPlan.name}. Changes take effect next billing cycle.`,
+        });
+        setShowChangePlanModal(false);
+        setSelectedPlan(null);
+      }
+    } catch (error) {
+      toast.error("Plan Change Failed", {
+        description: "Failed to update your plan. Please try again.",
+      });
+    } finally {
+      setChangePlanLoading(false);
+    }
+  };
 
   const handlePurchaseAddon = (addonId: string) => {
     const addon = addons.find((a) => a.id === addonId);
@@ -533,20 +589,20 @@ export default function BillingPage() {
                 <CardContent className="space-y-6">
                   {/* Plan Info */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-5 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-2">Current Plan</p>
-                      <p className="text-2xl font-semibold text-foreground">{subscription.planName}</p>
+                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                      <p className="text-sm text-muted-foreground mb-1">Current Plan</p>
+                      <p className="text-xl font-semibold text-foreground">{subscription.planName}</p>
                     </div>
-                    <div className="p-5 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-2">Billing Cycle</p>
-                      <p className="text-2xl font-semibold text-foreground capitalize">{subscription.billingInterval}</p>
+                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                      <p className="text-sm text-muted-foreground mb-1">Billing Cycle</p>
+                      <p className="text-xl font-semibold text-foreground capitalize">{subscription.billingInterval}</p>
                     </div>
-                    <div className="p-5 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
+                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                      <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
                         Renewal Date
                       </p>
-                      <p className="text-xl font-semibold text-foreground">{formatDate(subscription.renewalDate)}</p>
+                      <p className="text-lg font-semibold text-foreground">{formatDate(subscription.renewalDate)}</p>
                     </div>
                   </div>
 
@@ -663,7 +719,7 @@ export default function BillingPage() {
                         </p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" disabled>
+                    <Button variant="ghost" size="sm" onClick={handleOpenPaymentModal}>
                       Update
                     </Button>
                   </div>
@@ -909,27 +965,33 @@ export default function BillingPage() {
               <PlanSelectionUI compact />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowChangePlanModal(false)}>
+              <Button variant="outline" onClick={() => setShowChangePlanModal(false)} disabled={changePlanLoading}>
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  if (selectedPlan) {
-                    toast.success("Plan Changed", {
-                      description: "Your new plan will start next billing cycle.",
-                    });
-                    setShowChangePlanModal(false);
-                    setSelectedPlan(null);
-                  }
-                }}
-                disabled={!selectedPlan || selectedPlan === subscription?.planId}
+                onClick={handleConfirmPlanChange}
+                disabled={!selectedPlan || selectedPlan === subscription?.planId || changePlanLoading}
                 className="btn-synth"
               >
+                {changePlanLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Confirm Change
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Payment Method Modal */}
+        <PaymentMethodModal
+          open={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          currentCard={subscription?.paymentMethod ? {
+            brand: subscription.paymentMethod.brand,
+            last4: subscription.paymentMethod.last4,
+            expiryMonth: subscription.paymentMethod.expiryMonth,
+            expiryYear: subscription.paymentMethod.expiryYear,
+          } : null}
+          onSuccess={handlePaymentMethodUpdate}
+        />
       </PageTransition>
 
       {/* Sticky Checkout Footer - Only show when no subscription */}

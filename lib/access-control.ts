@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { SubscriptionStatus } from "@prisma/client";
 
 export type AccessLevel = "none" | "minimal" | "full";
 
@@ -20,15 +21,16 @@ export interface UserAccessInfo {
   hasMinimalAccess: boolean;
   isInTrial: boolean;
   trialEndsAt: Date | null;
-  subscriptionStatus: string | null;
+  subscriptionStatus: SubscriptionStatus | string | null;
 }
 
 /**
  * Check if a subscription status indicates active access
- * Includes: "active", "trialing", and valid trial period
+ * Supports both enum (SubscriptionStatus) and legacy string values for backward compatibility
+ * Includes: SUBSCRIBED enum value, "active", "trialing", and valid trial period
  */
 function isSubscriptionStatusActive(
-  status: string | null | undefined,
+  status: SubscriptionStatus | string | null | undefined,
   trialEndsAt: Date | null | undefined,
 ): boolean {
   if (!status) {
@@ -39,7 +41,21 @@ function isSubscriptionStatusActive(
     return false;
   }
 
-  const statusLower = status.toLowerCase();
+  // Check for enum value first (new way)
+  if (status === SubscriptionStatus.SUBSCRIBED) {
+    return true;
+  }
+
+  if (status === SubscriptionStatus.UNSUBSCRIBED) {
+    // Even if unsubscribed, check trial
+    if (trialEndsAt && new Date(trialEndsAt) > new Date()) {
+      return true;
+    }
+    return false;
+  }
+
+  // Legacy string support for backward compatibility
+  const statusLower = typeof status === "string" ? status.toLowerCase() : "";
 
   // Explicitly blocked statuses
   const blockedStatuses = [
@@ -48,6 +64,7 @@ function isSubscriptionStatusActive(
     "incomplete_expired",
     "incomplete",
     "unpaid",
+    "unsubscribed",
   ];
 
   if (blockedStatuses.includes(statusLower)) {
@@ -59,7 +76,7 @@ function isSubscriptionStatusActive(
   }
 
   // Allow active, trialing, and past_due (they still have access)
-  const allowedStatuses = ["active", "trialing", "past_due"];
+  const allowedStatuses = ["active", "trialing", "past_due", "subscribed"];
   return allowedStatuses.includes(statusLower);
 }
 
@@ -143,12 +160,16 @@ export async function hasFullAccess(userId: string): Promise<boolean> {
   }
   
   // Must have active subscription status AND a plan
-  const hasActiveStatus = user.subscriptionStatus === "active" || user.subscriptionStatus === "trialing";
+  // Check for enum value SUBSCRIBED or legacy string values
+  const hasActiveStatus = 
+    user.subscriptionStatus === SubscriptionStatus.SUBSCRIBED ||
+    user.subscriptionStatus === "active" || 
+    user.subscriptionStatus === "trialing";
   const hasPlan = !!user.subscriptionPlan && 
     (user.subscriptionPlan.toLowerCase().includes("starter") ||
      user.subscriptionPlan.toLowerCase().includes("pro") ||
      user.subscriptionPlan.toLowerCase().includes("agency"));
-  
+
   return hasActiveStatus && hasPlan;
 }
 

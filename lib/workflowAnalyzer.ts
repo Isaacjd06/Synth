@@ -102,7 +102,17 @@ function detectTrigger(message: string): WorkflowTrigger {
   
   // Webhook/event triggers
   if (message.includes('when') || message.includes('if')) {
-    const source = extractTriggerSource(message);
+    // Note: extractTriggerSource is now async but this function is sync
+    // For now, use a simple keyword-based approach
+    const normalizedMessage = message.toLowerCase();
+    let source: string | undefined;
+    
+    if (normalizedMessage.includes('webhook') || normalizedMessage.includes('http')) source = 'webhook';
+    else if (normalizedMessage.includes('email') || normalizedMessage.includes('gmail')) source = 'email';
+    else if (normalizedMessage.includes('slack')) source = 'slack';
+    else if (normalizedMessage.includes('github')) source = 'github';
+    else if (normalizedMessage.includes('form')) source = 'form';
+    
     return {
       type: 'event',
       source: source || 'unknown',
@@ -192,14 +202,33 @@ function extractScheduleCondition(message: string): string {
 
 /**
  * Extracts trigger source from message
+ * Uses keyword matching - actual app validation happens dynamically via Pipedream
+ * This is just a helper for AI workflow generation, not a restriction
  */
 function extractTriggerSource(message: string): string | undefined {
-  const sources = ['gmail', 'slack', 'github', 'webhook', 'api', 'form'];
-  for (const source of sources) {
-    if (message.includes(source)) {
-      return source;
+  // Common trigger keywords that map to Pipedream components
+  // Note: This is just for AI hints - actual apps are validated dynamically via Pipedream
+  const triggerKeywords: Record<string, string[]> = {
+    'webhook': ['webhook', 'http', 'api'],
+    'email': ['email', 'gmail', 'outlook', 'mail'],
+    'slack': ['slack', 'message', 'notification'],
+    'github': ['github', 'git', 'repository'],
+    'form': ['form', 'submit', 'survey'],
+    'schedule': ['schedule', 'cron', 'daily', 'weekly', 'monthly'],
+    'database': ['database', 'db', 'sql', 'postgres', 'mysql'],
+    'calendar': ['calendar', 'event', 'meeting'],
+  };
+
+  const normalizedMessage = message.toLowerCase();
+  
+  // Check for trigger keywords
+  for (const [triggerType, keywords] of Object.entries(triggerKeywords)) {
+    if (keywords.some(keyword => normalizedMessage.includes(keyword))) {
+      return triggerType;
     }
   }
+
+  // If no match, return undefined - the AI will determine the best trigger
   return undefined;
 }
 

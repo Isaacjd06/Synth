@@ -1,42 +1,20 @@
 /**
- * Subscription State Types and Utilities
+ * Subscription State Types and Utilities (Server-side)
  * 
  * Central types and utilities for subscription state management
+ * 
+ * NOTE: For client components, use @/lib/subscription-client instead
+ * to avoid bundling Prisma/Node.js modules in the browser.
  */
 
-export type SubscriptionPlan = "none" | "starter" | "pro" | "agency";
+import { prisma } from "@/lib/prisma";
+import { SubscriptionStatus } from "@prisma/client";
 
-export interface SubscriptionUsage {
-  activeWorkflowsUsed?: number;
-  activeWorkflowsLimit?: number;
-  executionsUsed?: number;
-  executionsLimit?: number;
-  logRetentionDays?: number;
-}
+// Re-export types from client-safe version for server-side compatibility
+export type { SubscriptionPlan, SubscriptionUsage, SubscriptionState } from "./subscription-client";
 
-export interface SubscriptionState {
-  plan: SubscriptionPlan;
-  isSubscribed: boolean; // plan !== "none"
-  isTrial?: boolean;
-  renewalDate?: string | null;
-  billingCycle?: "monthly" | "yearly" | null;
-  usage?: SubscriptionUsage;
-}
-
-/**
- * Map backend plan name to SubscriptionPlan type
- */
-export function mapPlanToSubscriptionPlan(plan: string | null | undefined): SubscriptionPlan {
-  if (!plan) return "none";
-  
-  const normalized = plan.toLowerCase().trim();
-  
-  if (normalized.includes("starter")) return "starter";
-  if (normalized.includes("pro") || normalized.includes("growth")) return "pro";
-  if (normalized.includes("agency") || normalized.includes("scale")) return "agency";
-  
-  return "none";
-}
+// Re-export utility functions that don't use Prisma
+export { mapPlanToSubscriptionPlan, getLogRetentionDays, getPlanDisplayName, getPlanBadgeColors } from "./subscription-client";
 
 /**
  * Get display name for a plan
@@ -124,5 +102,54 @@ export function getLogRetentionDays(plan: SubscriptionPlan): number {
     default:
       return 0;
   }
+}
+
+/**
+ * Get subscription status for a user
+ * 
+ * @param userId - User ID
+ * @returns SubscriptionStatus enum value (SUBSCRIBED or UNSUBSCRIBED)
+ */
+export async function getSubscriptionStatus(
+  userId: string
+): Promise<SubscriptionStatus> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { subscriptionStatus: true },
+  });
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  return user.subscriptionStatus;
+}
+
+/**
+ * Set subscription status for a user
+ * 
+ * This function allows manual override of subscription status for testing purposes.
+ * In production, this should typically be set automatically by Stripe webhooks or backend logic.
+ * 
+ * @param userId - User ID
+ * @param status - SubscriptionStatus enum value ("SUBSCRIBED" or "UNSUBSCRIBED")
+ * @returns Updated user with subscriptionStatus
+ */
+export async function setUserSubscriptionStatus(
+  userId: string,
+  status: "SUBSCRIBED" | "UNSUBSCRIBED"
+): Promise<{ id: string; subscriptionStatus: SubscriptionStatus }> {
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      subscriptionStatus: status,
+    },
+    select: {
+      id: true,
+      subscriptionStatus: true,
+    },
+  });
+
+  return updatedUser;
 }
 

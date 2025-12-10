@@ -663,3 +663,56 @@
 .animate-lock-pulse {
   animation: lock-pulse 2s ease-in-out infinite;
 }
+
+/* Toast/Sonner Overrides - Remove white backgrounds and padding */
+[data-sonner-toaster] {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
+
+[data-sonner-toast] {
+  background: transparent !important;
+  margin: 0 !important;
+}
+
+[data-sonner-toast] > div {
+  background: transparent !important;
+}
+
+/* Ensure toast viewport has no background */
+[data-sonner-toast-wrapper] {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Remove any white backgrounds from sonner container */
+.sonner-toaster {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.sonner-toast {
+  background: transparent !important;
+}
+
+/* Override any default sonner styles that might add white backgrounds */
+.sonner-toaster > div {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Ensure the toast list container has no background */
+[data-sonner-toaster] > div {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Remove any white box shadows or borders */
+[data-sonner-toaster],
+[data-sonner-toast],
+[data-sonner-toast-wrapper] {
+  box-shadow: none !important;
+}

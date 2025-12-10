@@ -85,12 +85,12 @@ export async function validateAppConnections(
     return { ok: true };
   }
 
-  // NEW: First, validate all apps are supported
-  const supportedValidation = validateAppsSupported(requiredApps);
+  // NEW: First, validate all apps are supported (dynamically checks Pipedream)
+  const supportedValidation = await validateAppsSupported(requiredApps);
   if (!supportedValidation.ok) {
     return {
       ok: false,
-      error: `The following apps are not currently supported: ${supportedValidation.unsupportedApps.join(", ")}`,
+      error: `The following apps are not currently available in Pipedream: ${supportedValidation.unsupportedApps.join(", ")}`,
       missingApps: supportedValidation.unsupportedApps,
     };
   }

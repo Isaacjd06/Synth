@@ -12,6 +12,7 @@ import {
   Sparkles,
   Menu,
   X,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const navItems = [
   { title: "Skills", href: "/knowledge", icon: Sparkles },
   { title: "Workflows", href: "/workflows", icon: Workflow },
   { title: "Executions", href: "/executions", icon: PlaySquare },
+  { title: "Connections", href: "/connections", icon: Plug },
   { title: "Billing", href: "/billing", icon: CreditCard },
 ];
 

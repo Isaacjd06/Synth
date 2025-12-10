@@ -3,8 +3,8 @@
 import { Lock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { SubscriptionPlan } from "@/lib/subscription";
-import { getPlanDisplayName } from "@/lib/subscription";
+import type { SubscriptionPlan } from "@/lib/subscription-client";
+import { getPlanDisplayName } from "@/lib/subscription-client";
 
 interface FeatureLockedCardProps {
   featureName: string;

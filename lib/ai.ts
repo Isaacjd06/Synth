@@ -101,14 +101,14 @@ You are creating workflows as part of Synth's automation capabilities.`;
   "name": "string (required)",
   "description": "string (optional)",
   "trigger": {
-    "type": "string (e.g., 'webhook', 'cron', 'manual', 'email', 'slack', etc.)",
-    "app": "string (e.g., 'gmail', 'slack', 'http', 'schedule', etc.)",
+    "type": "string (e.g., 'webhook', 'cron', 'manual', 'email', 'message', etc.)",
+    "app": "string (any app available in Pipedream - use the app key/name from Pipedream's component library)",
     "config": {} // object with app-specific configuration
   },
   "actions": [
     {
       "type": "string (e.g., 'send_email', 'post_message', 'http_request', 'create_record', etc.)",
-      "app": "string (e.g., 'gmail', 'slack', 'http', 'airtable', etc.)",
+      "app": "string (any app available in Pipedream - use the app key/name from Pipedream's component library)",
       "operation": "string (specific operation name for the app)",
       "config": {} // object with operation-specific configuration
     }
@@ -145,7 +145,7 @@ EXAMPLE OUTPUT:
   "actions": [
     {
       "type": "send_email",
-      "app": "gmail",
+      "app": "http", // Use appropriate app from Pipedream's component library
       "operation": "send",
       "config": {
         "to": "{{trigger.body.email}}",
@@ -272,14 +272,14 @@ You are creating workflows as part of Synth's automation capabilities. Your job 
   "name": "string (required)",
   "description": "string (optional)",
   "trigger": {
-    "type": "string (e.g., 'webhook', 'cron', 'manual', 'email', 'slack', etc.)",
-    "app": "string (e.g., 'gmail', 'slack', 'http', 'schedule', etc.)",
+    "type": "string (e.g., 'webhook', 'cron', 'manual', 'email', 'message', etc.)",
+    "app": "string (any app available in Pipedream - use the app key/name from Pipedream's component library)",
     "config": {} // object with app-specific configuration
   },
   "actions": [
     {
       "type": "string (e.g., 'send_email', 'post_message', 'http_request', 'create_record', etc.)",
-      "app": "string (e.g., 'gmail', 'slack', 'http', 'airtable', etc.)",
+      "app": "string (any app available in Pipedream - use the app key/name from Pipedream's component library)",
       "operation": "string (specific operation name for the app)",
       "config": {} // object with operation-specific configuration
     }

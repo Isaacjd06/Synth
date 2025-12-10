@@ -68,31 +68,24 @@ export async function searchPipedreamConnections(
     params.set("limit", limit.toString());
     params.set("offset", offset.toString());
 
-    // Pipedream API endpoint for components/sources
-    // Common endpoints: /components, /sources, /apps
-    const endpoint = `/components?${params.toString()}`;
+    // Try multiple Pipedream API endpoints in order of likelihood
+    // Pipedream's actual API structure may vary, so we try common patterns
+    const endpoints = [
+      `/components?${params.toString()}`,           // Most likely
+      `/v1/components?${params.toString()}`,        // Versioned
+      `/sources?${params.toString()}`,              // Alternative naming
+      `/v1/sources?${params.toString()}`,           // Versioned alternative
+      `/apps?${params.toString()}`,                  // Another alternative
+      `/v1/apps?${params.toString()}`,               // Versioned apps
+      `/integrations?${params.toString()}`,          // Integrations endpoint
+      `/v1/integrations?${params.toString()}`,      // Versioned integrations
+    ];
 
-    const response = await fetch(`${PIPEDREAM_API_URL}${endpoint}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
+    let lastError: PipedreamError | null = null;
 
-    if (!response.ok) {
-      let errorBody: unknown;
+    for (const endpoint of endpoints) {
       try {
-        errorBody = await response.json();
-      } catch {
-        errorBody = await response.text();
-      }
-
-      // If /components doesn't work, try /sources or /apps
-      if (response.status === 404) {
-        // Try alternative endpoint
-        const altEndpoint = `/sources?${params.toString()}`;
-        const altResponse = await fetch(`${PIPEDREAM_API_URL}${altEndpoint}`, {
+        const response = await fetch(`${PIPEDREAM_API_URL}${endpoint}`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
@@ -100,33 +93,58 @@ export async function searchPipedreamConnections(
           },
         });
 
-        if (altResponse.ok) {
-          const altData = await altResponse.json();
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Handle different response formats
+          const connections = normalizeConnectionData(
+            data.data || 
+            data.components || 
+            data.sources || 
+            data.apps || 
+            data.integrations ||
+            (Array.isArray(data) ? data : [])
+          );
+
           return {
-            connections: normalizeConnectionData(altData.data || altData.components || altData.sources || []),
-            total: altData.total || altData.count,
+            connections,
+            total: data.total || data.count || data.length || connections.length,
           };
         }
-      }
 
-      throw new PipedreamError(
-        `Failed to search Pipedream connections (${response.status}): ${JSON.stringify(errorBody)}`,
-        response.status,
-        errorBody
-      );
+        // If 404, try next endpoint
+        if (response.status === 404) {
+          continue;
+        }
+
+        // For other errors, save but continue trying
+        let errorBody: unknown;
+        try {
+          errorBody = await response.json();
+        } catch {
+          errorBody = await response.text();
+        }
+        
+        lastError = new PipedreamError(
+          `Failed to search Pipedream connections (${response.status}): ${JSON.stringify(errorBody)}`,
+          response.status,
+          errorBody
+        );
+      } catch (fetchError) {
+        // Network error, continue to next endpoint
+        continue;
+      }
     }
 
-    const data = await response.json();
+    // If all endpoints failed, throw the last error or a generic one
+    if (lastError) {
+      throw lastError;
+    }
 
-    // Handle different response formats
-    const connections = normalizeConnectionData(
-      data.data || data.components || data.sources || data.apps || []
+    throw new PipedreamError(
+      "All Pipedream API endpoints failed. Please check your API key and endpoint configuration."
     );
 
-    return {
-      connections,
-      total: data.total || data.count || connections.length,
-    };
   } catch (error) {
     if (error instanceof PipedreamError) {
       throw error;
@@ -159,50 +177,67 @@ export async function getPipedreamConnectionDetails(
   }
 
   try {
-    // Try multiple endpoint patterns
+    // Try multiple endpoint patterns in order of likelihood
     const endpoints = [
       `/components/${connectionKey}`,
+      `/v1/components/${connectionKey}`,
       `/sources/${connectionKey}`,
+      `/v1/sources/${connectionKey}`,
       `/apps/${connectionKey}`,
+      `/v1/apps/${connectionKey}`,
+      `/integrations/${connectionKey}`,
+      `/v1/integrations/${connectionKey}`,
     ];
 
+    let lastError: PipedreamError | null = null;
+
     for (const endpoint of endpoints) {
-      const response = await fetch(`${PIPEDREAM_API_URL}${endpoint}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      });
+      try {
+        const response = await fetch(`${PIPEDREAM_API_URL}${endpoint}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const connection = normalizeConnectionData([data.component || data.source || data.app || data])[0];
-        return connection || null;
-      }
+        if (response.ok) {
+          const data = await response.json();
+          const connection = normalizeConnectionData([
+            data.component || 
+            data.source || 
+            data.app || 
+            data.integration ||
+            data
+          ])[0];
+          return connection || null;
+        }
 
-      // If 404, try next endpoint
-      if (response.status === 404) {
-        continue;
-      }
+        // If 404, try next endpoint
+        if (response.status === 404) {
+          continue;
+        }
 
-      // If other error, throw
-      if (!response.ok) {
+        // For other errors, save but continue trying
         let errorBody: unknown;
         try {
           errorBody = await response.json();
         } catch {
           errorBody = await response.text();
         }
-        throw new PipedreamError(
+        
+        lastError = new PipedreamError(
           `Failed to get connection details (${response.status}): ${JSON.stringify(errorBody)}`,
           response.status,
           errorBody
         );
+      } catch (fetchError) {
+        // Network error, continue to next endpoint
+        continue;
       }
     }
 
-    // If all endpoints failed, return null
+    // If all endpoints failed, return null (app not found)
     return null;
   } catch (error) {
     if (error instanceof PipedreamError) {

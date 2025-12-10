@@ -1,8 +1,16 @@
 "use client";
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import SubscriptionModal from "@/components/subscription/SubscriptionModal";
-import type { SubscriptionState, SubscriptionPlan } from "@/lib/subscription";
-import { mapPlanToSubscriptionPlan, getLogRetentionDays } from "@/lib/subscription";
+import type { SubscriptionState, SubscriptionPlan } from "@/lib/subscription-client";
+import { mapPlanToSubscriptionPlan, getLogRetentionDays } from "@/lib/subscription-client";
+import { 
+  getPlanEntitlements, 
+  hasEntitlement, 
+  getEntitlementValue,
+  canUseIntegration,
+  hasAccess,
+  type PlanName
+} from "@/lib/entitlements-client";
 
 interface SubscriptionContextType extends SubscriptionState {
   planName: string | null; // Legacy support
@@ -10,6 +18,12 @@ interface SubscriptionContextType extends SubscriptionState {
   requireSubscription: (feature?: string) => boolean;
   openSubscriptionModal: (feature?: string) => void;
   isLoading: boolean;
+  // Entitlements helpers
+  entitlements: ReturnType<typeof getPlanEntitlements> | null;
+  hasEntitlement: (entitlement: keyof typeof import("@/lib/entitlements-client").PLAN_ENTITLEMENTS.starter) => boolean;
+  getEntitlementValue: (entitlement: keyof typeof import("@/lib/entitlements-client").PLAN_ENTITLEMENTS.starter) => number;
+  canUseIntegration: (category: "basic" | "advanced" | "custom") => boolean;
+  subscriptionStatus: "SUBSCRIBED" | "UNSUBSCRIBED" | null;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -19,6 +33,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     plan: "none",
     isSubscribed: false,
   });
+  const [subscriptionStatus, setSubscriptionStatus] = useState<"SUBSCRIBED" | "UNSUBSCRIBED" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | undefined>();
@@ -35,6 +50,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
         // Use the new enum field (SUBSCRIBED/UNSUBSCRIBED) as primary source
         // Fallback to legacy field check for backward compatibility
         const subscriptionStatusEnum = data.subscriptionStatus; // Should be "SUBSCRIBED" or "UNSUBSCRIBED"
+        const status: "SUBSCRIBED" | "UNSUBSCRIBED" = subscriptionStatusEnum === "SUBSCRIBED" ? "SUBSCRIBED" : "UNSUBSCRIBED";
         const isSubscribed = subscriptionStatusEnum === "SUBSCRIBED" || 
           (plan !== "none" && subscriptionStatusEnum !== "UNSUBSCRIBED" && 
            (data.subscriptionStatusLegacy === "active" || data.subscriptionStatusLegacy === "trialing"));
@@ -49,6 +65,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
           logRetentionDays: isSubscribed ? getLogRetentionDays(plan) : 0,
         } : undefined;
 
+        setSubscriptionStatus(status);
         setSubscriptionState({
           plan,
           isSubscribed,
@@ -93,6 +110,26 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
   // Legacy planName for backward compatibility
   const planName = subscriptionState.plan !== "none" ? subscriptionState.plan : null;
 
+  // Compute entitlements based on current subscription state
+  const entitlements = useMemo(() => {
+    return getPlanEntitlements(subscriptionState.plan);
+  }, [subscriptionState.plan]);
+
+  // Entitlement helper functions
+  const checkEntitlement = useCallback((entitlement: keyof typeof import("@/lib/entitlements-client").PLAN_ENTITLEMENTS.starter) => {
+    return hasAccess(subscriptionStatus, subscriptionState.plan, entitlement);
+  }, [subscriptionStatus, subscriptionState.plan]);
+
+  const getEntitlement = useCallback((entitlement: keyof typeof import("@/lib/entitlements-client").PLAN_ENTITLEMENTS.starter) => {
+    return getEntitlementValue(subscriptionState.plan, entitlement);
+  }, [subscriptionState.plan]);
+
+  const checkIntegration = useCallback((category: "basic" | "advanced" | "custom") => {
+    return hasAccess(subscriptionStatus, subscriptionState.plan, "customIntegrations") 
+      ? canUseIntegration(subscriptionState.plan, category)
+      : false;
+  }, [subscriptionStatus, subscriptionState.plan]);
+
   return (
     <SubscriptionContext.Provider value={{ 
       ...subscriptionState,
@@ -100,7 +137,12 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
       setSubscribed,
       requireSubscription,
       openSubscriptionModal,
-      isLoading
+      isLoading,
+      entitlements,
+      hasEntitlement: checkEntitlement,
+      getEntitlementValue: getEntitlement,
+      canUseIntegration: checkIntegration,
+      subscriptionStatus
     }}>
       {children}
       <SubscriptionModal 

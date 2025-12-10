@@ -47,29 +47,75 @@ export async function initiateOAuthFlow(
   const state = `${userId}_${serviceName}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
   try {
-    // Option 1: If Pipedream provides OAuth initiation endpoint
-    // This would be the ideal approach if Pipedream API supports it
-    const response = await fetch(
-      `${PIPEDREAM_API_URL}/oauth/authorize?service=${serviceName}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    // Strategy 1: Use Pipedream's native OAuth endpoints (preferred)
+    // Try multiple endpoint patterns for OAuth initiation
+    const oauthEndpoints = [
+      `/oauth/authorize`,
+      `/v1/oauth/authorize`,
+      `/sources/${serviceName.toLowerCase()}/oauth/authorize`,
+      `/v1/sources/${serviceName.toLowerCase()}/oauth/authorize`,
+      `/components/${serviceName.toLowerCase()}/oauth/authorize`,
+      `/v1/components/${serviceName.toLowerCase()}/oauth/authorize`,
+    ];
 
-    if (response.ok) {
-      const data = await response.json();
-      return {
-        authUrl: data.auth_url || data.url || data.authorization_url,
-        state,
-      };
+    for (const endpoint of oauthEndpoints) {
+      try {
+        const params = new URLSearchParams({
+          service: serviceName,
+          redirect_uri: redirectUri,
+          state: state,
+        });
+
+        const response = await fetch(
+          `${PIPEDREAM_API_URL}${endpoint}?${params.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const authUrl = data.auth_url || data.url || data.authorization_url || data.redirect_url;
+          
+          if (authUrl) {
+            return {
+              authUrl: typeof authUrl === 'string' ? authUrl : String(authUrl),
+              state,
+            };
+          }
+        }
+
+        // If 404, try next endpoint
+        if (response.status === 404) {
+          continue;
+        }
+      } catch (fetchError) {
+        // Network error, continue to next endpoint
+        continue;
+      }
     }
 
-    // Option 2: Fallback to generic OAuth 2.0 flow
-    // For services where we manage OAuth directly
+    // Strategy 2: Use Pipedream's connection/source OAuth flow
+    // Some services may require creating a connection first
+    try {
+      const connectionDetails = await import("./pipedream-connections").then(m => 
+        m.getPipedreamConnectionDetails(serviceName.toLowerCase())
+      );
+
+      if (connectionDetails?.auth?.type === "oauth") {
+        // If Pipedream connection exists, try to get OAuth URL from connection details
+        // This may require additional API calls to Pipedream
+      }
+    } catch {
+      // Ignore errors, continue to fallback
+    }
+
+    // Strategy 3: Fallback to direct service OAuth (if service config exists)
+    // This is only used if Pipedream doesn't handle OAuth for this service
     const serviceConfig = getServiceOAuthConfig(serviceName);
     if (serviceConfig) {
       const scopes = serviceConfig.scopes?.join(" ") || "";
@@ -87,8 +133,10 @@ export async function initiateOAuthFlow(
       };
     }
 
+    // If all strategies fail, throw error
     throw new PipedreamError(
-      `OAuth flow not available for service: ${serviceName}. Service configuration may be missing.`
+      `OAuth flow not available for service: ${serviceName}. ` +
+      `Please ensure the service is available in Pipedream or configure OAuth credentials.`
     );
   } catch (error) {
     if (error instanceof PipedreamError) {
@@ -127,33 +175,55 @@ export async function exchangeCodeForToken(
   }
 
   try {
-    // Option 1: Use Pipedream's token exchange endpoint
-    const response = await fetch(`${PIPEDREAM_API_URL}/oauth/token`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        service: serviceName,
-        code,
-        redirect_uri: redirectUri,
-      }),
-    });
+    // Strategy 1: Use Pipedream's native token exchange (preferred)
+    const tokenEndpoints = [
+      `/oauth/token`,
+      `/v1/oauth/token`,
+      `/sources/${serviceName.toLowerCase()}/oauth/token`,
+      `/v1/sources/${serviceName.toLowerCase()}/oauth/token`,
+      `/components/${serviceName.toLowerCase()}/oauth/token`,
+      `/v1/components/${serviceName.toLowerCase()}/oauth/token`,
+    ];
 
-    if (response.ok) {
-      const data = await response.json();
-      return {
-        accessToken: data.access_token || data.token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in,
-        tokenType: data.token_type || "Bearer",
-        sourceId: data.source_id,
-        authId: data.auth_id,
-      };
+    for (const endpoint of tokenEndpoints) {
+      try {
+        const response = await fetch(`${PIPEDREAM_API_URL}${endpoint}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${PIPEDREAM_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            service: serviceName,
+            code,
+            redirect_uri: redirectUri,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return {
+            accessToken: data.access_token || data.token || data.accessToken,
+            refreshToken: data.refresh_token || data.refreshToken,
+            expiresIn: data.expires_in || data.expiresIn,
+            tokenType: data.token_type || data.tokenType || "Bearer",
+            sourceId: data.source_id || data.sourceId,
+            authId: data.auth_id || data.authId,
+          };
+        }
+
+        // If 404, try next endpoint
+        if (response.status === 404) {
+          continue;
+        }
+      } catch (fetchError) {
+        // Network error, continue to next endpoint
+        continue;
+      }
     }
 
-    // Option 2: Fallback to direct service OAuth token exchange
+    // Strategy 2: Fallback to direct service OAuth token exchange
+    // Only used if Pipedream doesn't handle token exchange for this service
     const serviceConfig = getServiceOAuthConfig(serviceName);
     if (serviceConfig) {
       const tokenResponse = await fetch(serviceConfig.tokenUrl, {
@@ -182,7 +252,8 @@ export async function exchangeCodeForToken(
     }
 
     throw new PipedreamError(
-      `Failed to exchange authorization code for token: ${response.statusText}`
+      `Failed to exchange authorization code for token. ` +
+      `Please ensure the service is properly configured in Pipedream or provide OAuth credentials.`
     );
   } catch (error) {
     if (error instanceof PipedreamError) {
