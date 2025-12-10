@@ -1,11 +1,10 @@
 "use client";
-
 import { motion } from "framer-motion";
 import { Shield, ArrowRight, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
-export default function PricingCTA() {
+const PricingCTA = () => {
   return (
     <section className="py-20 md:py-28 relative overflow-hidden">
       {/* Background glow */}
@@ -73,7 +72,7 @@ export default function PricingCTA() {
               size="lg"
               className="group px-8 py-6 text-base font-accent rounded-xl hover:bg-secondary/80"
             >
-              <Link href="/workflows" className="flex items-center gap-2">
+              <Link href="/app/dashboard" className="flex items-center gap-2">
                 <LayoutDashboard className="w-5 h-5" />
                 Open Dashboard
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -97,5 +96,11 @@ export default function PricingCTA() {
       </div>
     </section>
   );
-}
+};
+
+export default PricingCTA;
+
+
+
+
 

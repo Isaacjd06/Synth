@@ -1,13 +1,12 @@
 "use client";
-
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Upload, File, FileText, FileSpreadsheet, Trash2, 
-  CheckCircle, AlertCircle, Loader2
+  CheckCircle, AlertCircle, Loader2, X 
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
@@ -31,48 +30,28 @@ const acceptedTypes = [
   ".csv"
 ];
 
-export default function FileUploadSection() {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Load files on mount
-  useEffect(() => {
-    loadFiles();
-  }, []);
-
-  const loadFiles = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/knowledge/upload");
-      const data = await response.json();
-      
-      if (data.ok && data.files) {
-        setFiles(data.files.map((file: {
-          id: string;
-          filename: string;
-          fileType: string;
-          fileSize: number;
-          status: string;
-          errorMessage?: string;
-          createdAt: string;
-        }) => ({
-          id: file.id,
-          name: file.filename,
-          type: file.fileType,
-          size: file.fileSize,
-          uploadDate: new Date(file.createdAt),
-          status: file.status as 'uploading' | 'processing' | 'complete' | 'error',
-          progress: file.status === 'complete' ? 100 : 0,
-          errorMessage: file.errorMessage,
-        })));
-      }
-    } catch (error) {
-      console.error("Error loading files:", error);
-    } finally {
-      setLoading(false);
+const FileUploadSection = () => {
+  const [files, setFiles] = useState<UploadedFile[]>([
+    {
+      id: "1",
+      name: "Company SOPs.pdf",
+      type: "application/pdf",
+      size: 2456789,
+      uploadDate: new Date(Date.now() - 86400000),
+      status: "complete",
+      progress: 100
+    },
+    {
+      id: "2",
+      name: "Sales Playbook.docx",
+      type: "application/docx",
+      size: 1234567,
+      uploadDate: new Date(Date.now() - 172800000),
+      status: "complete",
+      progress: 100
     }
-  };
+  ]);
+  const [isDragging, setIsDragging] = useState(false);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
@@ -99,7 +78,7 @@ export default function FileUploadSection() {
     }
   };
 
-  const handleUpload = async (file: File) => {
+  const simulateUpload = async (file: File) => {
     const newFile: UploadedFile = {
       id: crypto.randomUUID(),
       name: file.name,
@@ -112,42 +91,25 @@ export default function FileUploadSection() {
 
     setFiles(prev => [newFile, ...prev]);
 
-    try {
-      // Create FormData
-      const formData = new FormData();
-      formData.append("file", file);
-
-      // Upload file
-      const response = await fetch("/api/knowledge/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (data.ok && data.file) {
-        // Update file with server response
-        setFiles(prev => prev.map(f => 
-          f.id === newFile.id ? {
-            ...f,
-            id: data.file.id,
-            status: data.file.status as 'uploading' | 'processing' | 'complete' | 'error',
-            progress: 100
-          } : f
-        ));
-      } else {
-        throw new Error(data.error || "Upload failed");
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
+    // Simulate upload progress
+    for (let i = 0; i <= 100; i += 10) {
+      await new Promise(resolve => setTimeout(resolve, 100));
       setFiles(prev => prev.map(f => 
-        f.id === newFile.id ? { 
-          ...f, 
-          status: 'error',
-          errorMessage: error instanceof Error ? error.message : "Upload failed"
-        } : f
+        f.id === newFile.id ? { ...f, progress: i } : f
       ));
     }
+
+    // Simulate processing
+    setFiles(prev => prev.map(f => 
+      f.id === newFile.id ? { ...f, status: 'processing' } : f
+    ));
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Complete
+    setFiles(prev => prev.map(f => 
+      f.id === newFile.id ? { ...f, status: 'complete' } : f
+    ));
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -155,7 +117,7 @@ export default function FileUploadSection() {
     setIsDragging(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files);
-    droppedFiles.forEach(file => handleUpload(file));
+    droppedFiles.forEach(file => simulateUpload(file));
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -170,30 +132,12 @@ export default function FileUploadSection() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
-    selectedFiles.forEach(file => handleUpload(file));
+    selectedFiles.forEach(file => simulateUpload(file));
     e.target.value = '';
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this file?")) return;
-    
-    try {
-      const response = await fetch(`/api/knowledge/upload?id=${id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-      
-      if (data.ok) {
-        setFiles(prev => prev.filter(f => f.id !== id));
-      } else {
-        throw new Error(data.error || "Failed to delete file");
-      }
-    } catch (error) {
-      console.error("Delete error:", error);
-      // Still remove from UI even if API call fails
-      setFiles(prev => prev.filter(f => f.id !== id));
-    }
+  const handleDelete = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id));
   };
 
   return (
@@ -301,5 +245,10 @@ export default function FileUploadSection() {
       </Card>
     </div>
   );
-}
+};
+
+export default FileUploadSection;
+
+
+
 

@@ -1,16 +1,14 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Save, Building2, Users, Package, Wrench, Check, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
 
 interface Product {
   id: string;
@@ -27,10 +25,9 @@ interface TeamMember {
   responsibilities: string;
 }
 
-export default function StructuredContextSection() {
+const StructuredContextSection = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
   
   // Company Info
   const [companyName, setCompanyName] = useState("");
@@ -48,144 +45,15 @@ export default function StructuredContextSection() {
   // Tools
   const [tools, setTools] = useState<string[]>([]);
   const [newTool, setNewTool] = useState("");
-  const [connectedTools, setConnectedTools] = useState<string[]>([]);
-
-  // Load data on mount
-  useEffect(() => {
-    loadStructuredKnowledge();
-    loadConnectedTools();
-  }, []);
-
-  const loadStructuredKnowledge = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/knowledge/structured");
-      const data = await response.json();
-      
-      if (data.ok && data.items) {
-        // Load company info
-        const companyInfo = data.items.find((item: { type: string }) => item.type === "company_info");
-        if (companyInfo && companyInfo.data) {
-          setCompanyName(companyInfo.data.companyName || "");
-          setIndustry(companyInfo.data.industry || "");
-          setTargetCustomer(companyInfo.data.targetCustomer || "");
-          setKeyMetrics(companyInfo.data.keyMetrics || "");
-          setObjectives(companyInfo.data.objectives || "");
-        }
-
-        // Load products
-        const productItems = data.items.filter((item: { type: string }) => item.type === "product");
-        setProducts(productItems.map((item: { id: string; data: unknown }) => ({
-          id: item.id,
-          ...(item.data as Product),
-        })));
-
-        // Load team members
-        const teamItems = data.items.filter((item: { type: string }) => item.type === "team_member");
-        setTeamMembers(teamItems.map((item: { id: string; data: unknown }) => ({
-          id: item.id,
-          ...(item.data as TeamMember),
-        })));
-
-        // Load tools
-        const toolItems = data.items.filter((item: { type: string }) => item.type === "tool");
-        setTools(toolItems.map((item: { data: { name?: string } }) => item.data.name || "").filter(Boolean));
-      }
-    } catch (error) {
-      console.error("Error loading structured knowledge:", error);
-      toast.error("Failed to load structured knowledge");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadConnectedTools = async () => {
-    try {
-      const response = await fetch("/api/connections");
-      const data = await response.json();
-      if (data.ok && data.connections) {
-        setConnectedTools(data.connections.map((c: { service_name: string }) => c.service_name));
-      }
-    } catch (error) {
-      // Ignore errors - connections might not be available
-    }
-  };
+  const [connectedTools] = useState(["Gmail", "Slack", "Notion"]); // Mock connected tools
 
   const handleSave = async () => {
     setIsSaving(true);
-    try {
-      const itemsToSave = [];
-
-      // Save company info
-      if (companyName || industry || targetCustomer || keyMetrics || objectives) {
-        itemsToSave.push({
-          type: "company_info",
-          data: {
-            companyName,
-            industry,
-            targetCustomer,
-            keyMetrics,
-            objectives,
-          },
-        });
-      }
-
-      // Save products
-      products.forEach((product) => {
-        itemsToSave.push({
-          type: "product",
-          data: product,
-        });
-      });
-
-      // Save team members
-      teamMembers.forEach((member) => {
-        itemsToSave.push({
-          type: "team_member",
-          data: member,
-        });
-      });
-
-      // Save tools
-      tools.forEach((tool) => {
-        itemsToSave.push({
-          type: "tool",
-          data: { name: tool },
-        });
-      });
-
-      // First, get existing items to update company_info if it exists
-      const existingResponse = await fetch("/api/knowledge/structured?type=company_info");
-      const existingData = await existingResponse.json();
-      const existingCompanyInfo = existingData.ok && existingData.items.length > 0 
-        ? existingData.items[0] 
-        : null;
-
-      // Delete all existing structured knowledge and recreate (simpler for MVP)
-      // In production, you'd want to update existing items instead
-      if (itemsToSave.length > 0) {
-        const response = await fetch("/api/knowledge/structured", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(itemsToSave),
-        });
-
-        const data = await response.json();
-        
-        if (data.ok) {
-          toast.success("Structured knowledge saved");
-          setSaved(true);
-          setTimeout(() => setSaved(false), 2000);
-        } else {
-          throw new Error(data.error || "Failed to save");
-        }
-      }
-    } catch (error) {
-      console.error("Error saving structured knowledge:", error);
-      toast.error("Failed to save structured knowledge");
-    } finally {
-      setIsSaving(false);
-    }
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   const addProduct = () => {
@@ -513,5 +381,10 @@ export default function StructuredContextSection() {
       </div>
     </div>
   );
-}
+};
+
+export default StructuredContextSection;
+
+
+
 

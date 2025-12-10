@@ -1,5 +1,4 @@
 "use client";
-
 import { motion } from "framer-motion";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
@@ -19,7 +18,7 @@ const features = [
   { name: "SLA availability", starter: false, growth: false, scale: true },
 ];
 
-export default function ComparisonTable() {
+const ComparisonTable = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const displayedFeatures = isExpanded ? features : features.slice(0, 6);
 
@@ -119,5 +118,10 @@ export default function ComparisonTable() {
       </div>
     </section>
   );
-}
+};
+
+export default ComparisonTable;
+
+
+
 

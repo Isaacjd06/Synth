@@ -2,6 +2,8 @@ import "./globals.css";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import { Toaster } from "sonner";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 const plusJakartaSans = Plus_Jakarta_Sans({ 
@@ -18,8 +20,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="overflow-x-hidden">
       <body className={`${inter.className} ${plusJakartaSans.variable} overflow-x-hidden`}>
-        {children}
-        <Toaster position="top-right" richColors />
+        <Providers>
+          {children}
+          <Toaster position="top-right" richColors />
+          <Sonner />
+        </Providers>
       </body>
     </html>
   );

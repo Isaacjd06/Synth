@@ -42,10 +42,10 @@ export async function POST(req: Request) {
     // 4. Get user's current subscription
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { stripeSubscriptionId: true },
+      select: { stripe_subscription_id: true },
     });
 
-    if (!user || !user.stripeSubscriptionId) {
+    if (!user || !user.stripe_subscription_id) {
       return NextResponse.json(
         { error: "No active subscription found" },
         { status: 404 },
@@ -54,22 +54,24 @@ export async function POST(req: Request) {
 
     // 5. Cancel subscription
     const canceledSubscription = await cancelSubscription(
-      user.stripeSubscriptionId,
+      user.stripe_subscription_id,
       cancel_at_period_end,
     );
 
     // 6. Update user in database
+    const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
+    const stripeStatus = cancel_at_period_end ? "cancels_at_period_end" : "canceled";
     const updateData: {
-      subscriptionStatus: string;
-      subscriptionEndsAt?: Date;
+      subscription_status: string;
+      subscriptionStatus: import("@prisma/client").SubscriptionStatus;
+      subscription_ends_at?: Date;
     } = {
-      subscriptionStatus: cancel_at_period_end
-        ? "cancels_at_period_end"
-        : "canceled",
+      subscription_status: stripeStatus,
+      subscriptionStatus: mapStripeStatusToSubscriptionStatus(stripeStatus),
     };
 
     if (!cancel_at_period_end) {
-      updateData.subscriptionEndsAt = new Date();
+      updateData.subscription_ends_at = new Date();
     }
 
     await prisma.user.update({
@@ -79,9 +81,10 @@ export async function POST(req: Request) {
 
     // 7. Save cancellation reason if provided
     if (reason && typeof reason === "string" && reason.trim()) {
-      await prisma.subscriptionCancelReason.create({
+      await prisma.subscription_cancel_reasons.create({
         data: {
-          userId,
+          id: crypto.randomUUID(),
+          user_id: userId,
           reason: reason.trim(),
         },
       });

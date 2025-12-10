@@ -1,0 +1,128 @@
+/**
+ * Subscription State Types and Utilities
+ * 
+ * Central types and utilities for subscription state management
+ */
+
+export type SubscriptionPlan = "none" | "starter" | "pro" | "agency";
+
+export interface SubscriptionUsage {
+  activeWorkflowsUsed?: number;
+  activeWorkflowsLimit?: number;
+  executionsUsed?: number;
+  executionsLimit?: number;
+  logRetentionDays?: number;
+}
+
+export interface SubscriptionState {
+  plan: SubscriptionPlan;
+  isSubscribed: boolean; // plan !== "none"
+  isTrial?: boolean;
+  renewalDate?: string | null;
+  billingCycle?: "monthly" | "yearly" | null;
+  usage?: SubscriptionUsage;
+}
+
+/**
+ * Map backend plan name to SubscriptionPlan type
+ */
+export function mapPlanToSubscriptionPlan(plan: string | null | undefined): SubscriptionPlan {
+  if (!plan) return "none";
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  if (normalized.includes("starter")) return "starter";
+  if (normalized.includes("pro") || normalized.includes("growth")) return "pro";
+  if (normalized.includes("agency") || normalized.includes("scale")) return "agency";
+  
+  return "none";
+}
+
+/**
+ * Get display name for a plan
+ */
+export function getPlanDisplayName(plan: SubscriptionPlan): string {
+  switch (plan) {
+    case "starter":
+      return "Starter";
+    case "pro":
+      return "Pro";
+    case "agency":
+      return "Agency";
+    case "none":
+    default:
+      return "No Active Subscription";
+  }
+}
+
+/**
+ * Get color classes for plan badge
+ */
+export function getPlanBadgeColors(plan: SubscriptionPlan): {
+  bg: string;
+  text: string;
+  border: string;
+} {
+  switch (plan) {
+    case "starter":
+      return {
+        bg: "bg-blue-500/20",
+        text: "text-blue-400",
+        border: "border-blue-500/30",
+      };
+    case "pro":
+      return {
+        bg: "bg-primary/20",
+        text: "text-primary",
+        border: "border-primary/30",
+      };
+    case "agency":
+      return {
+        bg: "bg-purple-500/20",
+        text: "text-purple-400",
+        border: "border-purple-500/30",
+      };
+    case "none":
+    default:
+      return {
+        bg: "bg-muted/50",
+        text: "text-muted-foreground",
+        border: "border-border",
+      };
+  }
+}
+
+/**
+ * Determine if a plan has access to a feature
+ */
+export function hasFeatureAccess(
+  currentPlan: SubscriptionPlan,
+  requiredPlan: SubscriptionPlan
+): boolean {
+  if (currentPlan === "none") return false;
+  if (requiredPlan === "none") return true;
+  
+  const planHierarchy: SubscriptionPlan[] = ["none", "starter", "pro", "agency"];
+  const currentIndex = planHierarchy.indexOf(currentPlan);
+  const requiredIndex = planHierarchy.indexOf(requiredPlan);
+  
+  return currentIndex >= requiredIndex;
+}
+
+/**
+ * Get log retention days for a plan
+ */
+export function getLogRetentionDays(plan: SubscriptionPlan): number {
+  switch (plan) {
+    case "starter":
+      return 7;
+    case "pro":
+      return 30;
+    case "agency":
+      return 90;
+    case "none":
+    default:
+      return 0;
+  }
+}
+

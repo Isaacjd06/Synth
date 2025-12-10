@@ -115,14 +115,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Find user, their stripeSubscriptionId, and stripeCustomerId
+    // 4. Find user, their stripe_subscription_id, and stripe_customer_id
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
-        stripeSubscriptionId: true,
-        stripeCustomerId: true,
-        plan: true,
+        stripe_subscription_id: true,
+        stripe_customer_id: true,
+        stripe_payment_method_id: true,
+        subscription_plan: true,
+        pending_subscription_plan: true,
+        last_plan_change_at: true,
       },
     });
 
@@ -137,7 +140,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!user.stripeSubscriptionId) {
+    if (!user.stripe_subscription_id) {
       return NextResponse.json(
         {
           success: false,
@@ -148,9 +151,23 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if plan is already the same
-    // Note: user.plan now stores plan name (e.g., "pro"), not price ID
-    if (user.plan === newPlan) {
+    // Check if user has a payment method
+    if (!user.stripe_payment_method_id) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "NO_PAYMENT_METHOD",
+          message: "Please add a payment method before switching plans",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if plan is already the same (check both current and pending)
+    const currentPlan = user.subscription_plan;
+    const pendingPlan = (user as { pending_subscription_plan?: string }).pending_subscription_plan;
+    
+    if (currentPlan === newPlan && !pendingPlan) {
       return NextResponse.json(
         {
           success: false,
@@ -161,9 +178,42 @@ export async function POST(req: Request) {
       );
     }
 
+    // Check if there's already a pending plan change
+    if (pendingPlan === newPlan) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PENDING_PLAN_SAME",
+          message: "This plan change is already pending",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check 14-day rule: can only change plan once every 14 days
+    const lastPlanChangeAt = (user as { last_plan_change_at?: Date }).last_plan_change_at;
+    if (lastPlanChangeAt) {
+      const daysSinceLastChange = Math.floor(
+        (Date.now() - lastPlanChangeAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      
+      if (daysSinceLastChange < 14) {
+        const daysRemaining = 14 - daysSinceLastChange;
+        return NextResponse.json(
+          {
+            success: false,
+            code: "PLAN_CHANGE_COOLDOWN",
+            message: `You can only change your plan once every 14 days. Please try again in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}.`,
+            days_remaining: daysRemaining,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // 5. Fetch the subscription from Stripe
     const subscription = await stripe.subscriptions.retrieve(
-      user.stripeSubscriptionId,
+      user.stripe_subscription_id,
       {
         expand: ["items.data.price"],
       }
@@ -206,7 +256,7 @@ export async function POST(req: Request) {
     ];
 
     const updatedSubscription = await stripe.subscriptions.update(
-      user.stripeSubscriptionId,
+      user.stripe_subscription_id,
       {
         items,
         proration_behavior: "none", // Changes apply from next billing period
@@ -220,15 +270,19 @@ export async function POST(req: Request) {
       ? new Date(updatedSubscription.current_period_end * 1000)
       : null;
 
-    // 9. Update Prisma with new plan and status
-    // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
-    // This is needed for feature-gate.ts to work correctly
+    // 9. Update Prisma with pending plan change
+    // The plan change will only take effect on the next payment
+    // Current features stay the same until payment is processed
+    const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
     await prisma.user.update({
       where: { id: userId },
       data: {
-        plan: newPlan, // Store plan name instead of price ID
-        subscriptionStatus: updatedSubscription.status,
-        subscriptionRenewalAt: renewalAt,
+        pending_subscription_plan: newPlan, // Set as pending, not current
+        last_plan_change_at: new Date(), // Track when plan change was requested
+        subscription_status: updatedSubscription.status,
+        subscriptionStatus: mapStripeStatusToSubscriptionStatus(updatedSubscription.status),
+        subscription_renewal_at: renewalAt,
+        // Note: subscription_plan stays the same until payment succeeds
       },
     });
 
@@ -239,12 +293,13 @@ export async function POST(req: Request) {
         status: updatedSubscription.status,
         plan: newPlanPriceId,
         plan_name: newPlan,
+        pending_plan: newPlan, // Indicate this is a pending change
         billing_period: billingPeriod,
         renewal_at: renewalAt?.toISOString() || null,
         current_period_end: updatedSubscription.current_period_end
           ? new Date(updatedSubscription.current_period_end * 1000).toISOString()
           : null,
-        message: "Plan change will take effect at the next billing period",
+        message: "Plan change is pending and will take effect when the next payment is processed. Your current plan features remain active until then.",
       },
       { status: 200 }
     );

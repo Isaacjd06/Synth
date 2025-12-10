@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { formatHardcodedKnowledgeForPrompt } from "@/lib/hardcoded-knowledge";
 
 /**
- * Knowledge base context for AI workflow generation
+ * Knowledge base context for AI workflow generation and general intelligence
  */
 export interface KnowledgeContext {
   businessRules: Array<{ content: string; priority: string }>;
@@ -122,9 +123,27 @@ export async function fetchKnowledgeContext(userId: string): Promise<KnowledgeCo
 
 /**
  * Formats knowledge context into a string for AI prompts
+ * Includes both user-specific knowledge and universal hardcoded knowledge
  */
-export function formatKnowledgeContextForPrompt(context: KnowledgeContext): string {
+export function formatKnowledgeContextForPrompt(context: KnowledgeContext, includeHardcoded: boolean = true): string {
   const sections: string[] = [];
+
+  // Add hardcoded universal knowledge first - THIS IS MANDATORY AND PRIMARY
+  if (includeHardcoded) {
+    const hardcodedKnowledge = formatHardcodedKnowledgeForPrompt();
+    if (hardcodedKnowledge) {
+      sections.push('═══════════════════════════════════════════════════════════');
+      sections.push('PRIMARY KNOWLEDGE SOURCE - SYNTH\'S BUSINESS EXPERTISE');
+      sections.push('═══════════════════════════════════════════════════════════');
+      sections.push('');
+      sections.push(hardcodedKnowledge);
+      sections.push('');
+      sections.push('═══════════════════════════════════════════════════════════');
+      sections.push('USER-SPECIFIC BUSINESS CONTEXT (in addition to knowledge base above)');
+      sections.push('═══════════════════════════════════════════════════════════');
+      sections.push('');
+    }
+  }
 
   // Company Information
   if (context.companyInfo) {

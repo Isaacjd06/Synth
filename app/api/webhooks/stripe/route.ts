@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { SubscriptionStatus } from "@prisma/client";
 import { logError } from "@/lib/error-logger";
 import Stripe from "stripe";
 
@@ -41,8 +42,8 @@ export async function POST(req: Request) {
   }
 
   // Check for idempotency - ensure we haven't processed this event before
-  const existingEvent = await prisma.webhookEventLog.findUnique({
-    where: { stripeEventId: event.id },
+  const existingEvent = await prisma.webhook_event_logs.findUnique({
+    where: { stripe_event_id: event.id },
   });
 
   if (existingEvent && existingEvent.processed) {
@@ -51,15 +52,15 @@ export async function POST(req: Request) {
   }
 
   // Create or update event log
-  await prisma.webhookEventLog.upsert({
-    where: { stripeEventId: event.id },
+  await prisma.webhook_event_logs.upsert({
+    where: { stripe_event_id: event.id },
     create: {
-      stripeEventId: event.id,
-      eventType: event.type,
+      stripe_event_id: event.id,
+      event_type: event.type,
       processed: false,
     },
     update: {
-      eventType: event.type,
+      event_type: event.type,
     },
   });
 
@@ -82,17 +83,37 @@ export async function POST(req: Request) {
         if (subscriptionId) {
           // Find user by subscription ID
           const user = await prisma.user.findFirst({
-            where: { stripeSubscriptionId: subscriptionId },
-            select: { id: true },
+            where: { stripe_subscription_id: subscriptionId },
+            select: { 
+              id: true,
+              pending_subscription_plan: true,
+            },
           });
 
           if (user) {
-            // Update subscription status to past_due
-            // This will revoke access (hasFullAccess will return false)
+            // When payment fails, fetch the actual subscription status from Stripe
+            // Stripe typically sets subscription to "past_due" or "unpaid" when payment fails
+            let actualSubscriptionStatus = "past_due"; // Default to past_due for payment failures
+            
+            try {
+              const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+              actualSubscriptionStatus = subscription.status;
+            } catch (error) {
+              // If we can't fetch subscription, use "past_due" as default
+              logError("app/api/webhooks/stripe (invoice.payment_failed - fetch subscription)", error);
+            }
+
+            // Update status based on actual Stripe subscription status
+            // Payment failed means user hasn't paid → UNSUBSCRIBED
+            const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
             await prisma.user.update({
               where: { id: user.id },
               data: {
-                subscriptionStatus: "past_due",
+                subscription_status: actualSubscriptionStatus,
+                subscriptionStatus: mapStripeStatusToSubscriptionStatus(actualSubscriptionStatus),
+                pending_subscription_plan: null, // Clear pending plan since payment failed
+                // Note: subscription_plan stays as current plan, but status indicates payment failed
+                // This means user loses access until payment is resolved
               },
             });
           }
@@ -116,17 +137,58 @@ export async function POST(req: Request) {
         if (subscriptionId) {
           // Find user by subscription ID
           const user = await prisma.user.findFirst({
-            where: { stripeSubscriptionId: subscriptionId },
-            select: { id: true, subscriptionStatus: true },
+            where: { stripe_subscription_id: subscriptionId },
+            select: { 
+              id: true, 
+              subscription_status: true,
+              pending_subscription_plan: true,
+            },
           });
 
           if (user) {
-            // Restore subscription status to active (or set to active if it was past_due)
+            // Payment succeeded → user has paid → SUBSCRIBED
+            // Fetch actual subscription status to ensure accuracy
+            let actualSubscriptionStatus = "active"; // Default for successful payment
+            let renewalAt: Date | null = null;
+            
+            try {
+              const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+              actualSubscriptionStatus = subscription.status;
+              if (subscription.current_period_end) {
+                renewalAt = new Date(subscription.current_period_end * 1000);
+              }
+            } catch (error) {
+              // If we can't fetch subscription, use "active" as default for payment success
+              logError("app/api/webhooks/stripe (invoice.payment_succeeded - fetch subscription)", error);
+            }
+
+            // Payment succeeded means user has paid → SUBSCRIBED
+            const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
+            const updateData: {
+              subscription_status: string;
+              subscriptionStatus: SubscriptionStatus;
+              subscription_plan?: string;
+              pending_subscription_plan?: null;
+              subscription_renewal_at?: Date;
+            } = {
+              subscription_status: actualSubscriptionStatus,
+              subscriptionStatus: mapStripeStatusToSubscriptionStatus(actualSubscriptionStatus),
+            };
+
+            // Update renewal date
+            if (renewalAt) {
+              updateData.subscription_renewal_at = renewalAt;
+            }
+
+            // Apply pending plan change if it exists
+            if (user.pending_subscription_plan) {
+              updateData.subscription_plan = user.pending_subscription_plan;
+              updateData.pending_subscription_plan = null; // Clear pending plan
+            }
+
             await prisma.user.update({
               where: { id: user.id },
-              data: {
-                subscriptionStatus: "active",
-              },
+              data: updateData,
             });
           }
         }
@@ -142,7 +204,7 @@ export async function POST(req: Request) {
 
         // Find user by customer ID
         const user = await prisma.user.findFirst({
-          where: { stripeCustomerId: subscription.customer as string },
+          where: { stripe_customer_id: subscription.customer as string },
           select: { id: true },
         });
 
@@ -170,25 +232,48 @@ export async function POST(req: Request) {
             );
           }
 
-          // Note: We do NOT update the addOns field from subscription items
+          // Note: We do NOT update the subscription_add_ons field from subscription items
           // because add-ons should never be in subscriptions.
-          // The addOns field is only updated via the /api/billing/purchase-addon endpoint.
+          // The subscription_add_ons field is only updated via the /api/billing/purchase-addon endpoint.
+          // Only update subscription_plan if there's no pending plan change
+          // (pending plans are applied on payment success via invoice.payment_succeeded)
+          const userWithPending = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { pending_subscription_plan: true },
+          });
+
+          const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
+          const updateData: {
+            stripe_subscription_id: string;
+            subscription_status: string;
+            subscriptionStatus: SubscriptionStatus;
+            trial_ends_at: Date | null;
+            subscription_started_at: Date;
+            subscription_ends_at: Date | null;
+            subscription_plan?: string;
+          } = {
+            stripe_subscription_id: subscription.id,
+            subscription_status: status,
+            subscriptionStatus: mapStripeStatusToSubscriptionStatus(status),
+            trial_ends_at: trialEnd,
+            subscription_started_at: new Date(subscription.created * 1000),
+            subscription_ends_at:
+              subscription.current_period_end
+                ? new Date(subscription.current_period_end * 1000)
+                : subscription.trial_end
+                  ? new Date(subscription.trial_end * 1000)
+                  : null,
+          };
+
+          // Only update subscription_plan if there's no pending plan change
+          // Pending plans are applied on payment success, not on subscription update
+          if (!userWithPending?.pending_subscription_plan && planName) {
+            updateData.subscription_plan = planName;
+          }
+
           await prisma.user.update({
             where: { id: user.id },
-            data: {
-              stripeSubscriptionId: subscription.id,
-              plan: planName, // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
-              subscriptionStatus: status,
-              trialEndsAt: trialEnd,
-              subscriptionStartedAt: new Date(subscription.created * 1000),
-              subscriptionEndsAt:
-                subscription.current_period_end
-                  ? new Date(subscription.current_period_end * 1000)
-                  : subscription.trial_end
-                    ? new Date(subscription.trial_end * 1000)
-                    : null,
-              // addOns field is NOT updated from subscriptions
-            },
+            data: updateData,
           });
         }
         break;
@@ -199,16 +284,21 @@ export async function POST(req: Request) {
 
         // Find user by customer ID
         const user = await prisma.user.findFirst({
-          where: { stripeCustomerId: subscription.customer as string },
+          where: { stripe_customer_id: subscription.customer as string },
           select: { id: true },
         });
 
         if (user) {
+          // When subscription is deleted (period ended after cancellation, or immediate cancellation)
+          // User has not paid / subscription ended → UNSUBSCRIBED
+          const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
           await prisma.user.update({
             where: { id: user.id },
             data: {
-              subscriptionStatus: "canceled",
-              subscriptionEndsAt: new Date(),
+              subscription_status: "canceled",
+              subscriptionStatus: mapStripeStatusToSubscriptionStatus("canceled"), // Will be UNSUBSCRIBED
+              subscription_ends_at: new Date(),
+              pending_subscription_plan: null, // Clear pending plan since subscription is deleted
             },
           });
         }
@@ -222,11 +312,11 @@ export async function POST(req: Request) {
     }
 
     // Mark event as processed
-    await prisma.webhookEventLog.update({
-      where: { stripeEventId: event.id },
+    await prisma.webhook_event_logs.update({
+      where: { stripe_event_id: event.id },
       data: {
         processed: true,
-        processedAt: new Date(),
+        processed_at: new Date(),
       },
     });
 
@@ -238,10 +328,10 @@ export async function POST(req: Request) {
       eventType: event.type,
     });
 
-    await prisma.webhookEventLog.update({
-      where: { stripeEventId: event.id },
+    await prisma.webhook_event_logs.update({
+      where: { stripe_event_id: event.id },
       data: {
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        error_message: error instanceof Error ? error.message : "Unknown error",
       },
     });
 

@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { SubscriptionStatus } from "@prisma/client";
 import { isDevAuthEnabled as isDevAuth } from "@/lib/runtime-utils";
 
 /**
@@ -50,12 +51,14 @@ export async function getOrCreateDevUser() {
 
     devUser = await prisma.user.create({
       data: {
+        id: randomUUID(), // Generate unique ID for the user
         email: DEV_USER_EMAIL,
         name: DEV_USER_NAME,
         email_verified: true,
         provider: "dev",
-        trialEndsAt,
-        subscriptionStatus: "trialing", // Give dev user full access
+        trial_ends_at: trialEndsAt,
+        subscription_status: "trialing", // Give dev user full access
+        subscriptionStatus: "SUBSCRIBED", // Dev user always has access
         // Set a fake Google ID for compatibility
         google_id: `dev-${randomUUID()}`,
         avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(DEV_USER_NAME)}&background=0ea5e9&color=fff`,

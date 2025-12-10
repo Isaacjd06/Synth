@@ -140,12 +140,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Look up user and their stripeCustomerId
+    // 4. Look up user and their stripe_customer_id
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
-        stripeCustomerId: true,
+        stripe_customer_id: true,
       },
     });
 
@@ -160,12 +160,29 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!user.stripeCustomerId) {
+    if (!user.stripe_customer_id) {
       return NextResponse.json(
         {
           success: false,
           code: "NO_CUSTOMER",
           message: "Stripe customer not found. Please set up payment method first.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if user has a payment method
+    const userWithPaymentMethod = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripe_payment_method_id: true },
+    });
+
+    if (!userWithPaymentMethod?.stripe_payment_method_id) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "NO_PAYMENT_METHOD",
+          message: "Please add a payment method before creating a subscription.",
         },
         { status: 400 }
       );
@@ -182,7 +199,7 @@ export async function POST(req: Request) {
     // Since we're using SetupIntent to save payment methods first,
     // the subscription should automatically charge the default payment method
     const subscriptionParams: Stripe.SubscriptionCreateParams = {
-      customer: user.stripeCustomerId,
+      customer: user.stripe_customer_id,
       items,
       // Use default behavior: auto-charge the default payment method
       // Remove payment_behavior to use Stripe's default (error_if_incomplete)
@@ -217,19 +234,24 @@ export async function POST(req: Request) {
       ? new Date(subscription.trial_end * 1000)
       : null;
 
-    // 8. Save to Prisma using camelCase field names
+    // 8. Save to Prisma using snake_case field names
     // Store plan name (e.g., "pro", "starter", "agency") instead of price ID
     // This is needed for feature-gate.ts to work correctly
-    // Note: addOns field is NOT updated here - add-ons are purchased separately
+    // Note: subscription_add_ons field is NOT updated here - add-ons are purchased separately
+    // For new subscriptions, both current and pending plan are the same
+    const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
     await prisma.user.update({
       where: { id: userId },
       data: {
-        stripeSubscriptionId: subscription.id,
-        plan: plan, // Store plan name (e.g., "pro") instead of price ID
-        subscriptionStatus: subscription.status,
-        subscriptionRenewalAt: renewalAt,
-        trialEndsAt: trialEndsAt, // Store 3-day trial end date
-        // addOns field is NOT updated - add-ons are one-time purchases via /api/billing/purchase-addon
+        stripe_subscription_id: subscription.id,
+        subscription_plan: plan, // Store plan name (e.g., "pro") instead of price ID
+        pending_subscription_plan: null, // No pending plan for new subscriptions
+        subscription_status: subscription.status,
+        subscriptionStatus: mapStripeStatusToSubscriptionStatus(subscription.status),
+        subscription_renewal_at: renewalAt,
+        trial_ends_at: trialEndsAt, // Store 3-day trial end date
+        subscription_started_at: new Date(),
+        // subscription_add_ons field is NOT updated - add-ons are one-time purchases via /api/billing/purchase-addon
       },
     });
 

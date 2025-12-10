@@ -1,30 +1,40 @@
 "use client";
-
 import { motion } from "framer-motion";
+import { Bot } from "lucide-react";
 
-export default function TypingIndicator() {
+const TypingIndicator = () => {
   return (
-    <div className="flex items-center gap-2 px-4 py-3">
-      <div className="flex items-center gap-1">
-        {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            className="w-2 h-2 bg-gray-400 rounded-full"
-            animate={{
-              y: [0, -8, 0],
-              opacity: [0.5, 1, 0.5],
-            }}
-            transition={{
-              duration: 0.6,
-              repeat: Infinity,
-              delay: i * 0.2,
-              ease: "easeInOut",
-            }}
-          />
-        ))}
+    <div className="flex gap-3">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+        <Bot className="w-4 h-4 text-primary" />
       </div>
-      <span className="text-sm text-gray-400 ml-2">Synth is thinking...</span>
+      <div className="flex items-center gap-2 px-4 py-3 bg-muted/50 border border-border/50 rounded-xl">
+        <div className="flex items-center gap-1">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-2 h-2 rounded-full bg-primary/60"
+              animate={{ 
+                y: [0, -6, 0], 
+                opacity: [0.4, 1, 0.4] 
+              }}
+              transition={{
+                duration: 0.6,
+                repeat: Infinity,
+                delay: i * 0.15,
+                ease: "easeInOut"
+              }}
+            />
+          ))}
+        </div>
+        <span className="text-sm text-muted-foreground ml-1">Synth is thinking...</span>
+      </div>
     </div>
   );
-}
+};
+
+export default TypingIndicator;
+
+
+
 

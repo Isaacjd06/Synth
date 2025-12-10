@@ -46,13 +46,17 @@ export async function GET(req: Request) {
       select: {
         id: true,
         email: true,
-        stripeCustomerId: true,
-        stripeSubscriptionId: true,
-        plan: true,
-        subscriptionStatus: true,
-        subscriptionRenewalAt: true,
-        trialEndsAt: true,
-        addOns: true,
+        stripe_customer_id: true,
+        stripe_subscription_id: true,
+        subscription_plan: true,
+        pending_subscription_plan: true,
+        subscription_status: true, // Legacy field for backward compatibility
+        subscriptionStatus: true, // New enum field - primary source of truth
+        subscription_renewal_at: true,
+        trial_ends_at: true,
+        subscription_add_ons: true,
+        last_plan_change_at: true,
+        has_active_payment_method: true,
       },
     });
 
@@ -71,10 +75,10 @@ export async function GET(req: Request) {
     let hasPaymentMethod = false;
     let billingPeriod: "monthly" | "yearly" | null = null;
 
-    if (user.stripeCustomerId) {
+    if (user.stripe_customer_id) {
       try {
         // Fetch Stripe customer to check for default payment method
-        const customer = await stripe.customers.retrieve(user.stripeCustomerId, {
+        const customer = await stripe.customers.retrieve(user.stripe_customer_id, {
           expand: ["invoice_settings.default_payment_method"],
         });
 
@@ -88,9 +92,9 @@ export async function GET(req: Request) {
         }
 
         // Determine billing period from subscription if it exists
-        if (user.stripeSubscriptionId) {
+        if (user.stripe_subscription_id) {
           try {
-            const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+            const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id, {
               expand: ["items.data.price"],
             });
 
@@ -107,7 +111,7 @@ export async function GET(req: Request) {
             // Log error but don't fail - billing period detection is best effort
             logError("app/api/billing/state (billing period detection)", error, {
               userId,
-              subscriptionId: user.stripeSubscriptionId,
+              subscriptionId: user.stripe_subscription_id,
             });
           }
         }
@@ -115,26 +119,83 @@ export async function GET(req: Request) {
         // Log error but don't fail the request - payment method check is best effort
         logError("app/api/billing/state (payment method check)", error, {
           userId,
-          customerId: user.stripeCustomerId,
+          customerId: user.stripe_customer_id,
         });
         // Continue with hasPaymentMethod = false
       }
     }
 
-    // 4. Build and return response
+    // 4. Calculate plan change eligibility (14-day rule)
+    let canChangePlan = true;
+    let daysUntilNextChange: number | null = null;
+    
+    if (user.last_plan_change_at) {
+      const daysSinceLastChange = Math.floor(
+        (Date.now() - user.last_plan_change_at.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      
+      if (daysSinceLastChange < 14) {
+        canChangePlan = false;
+        daysUntilNextChange = 14 - daysSinceLastChange;
+      }
+    }
+
+    // 5. Calculate usage limits
+    const { getFeatureLimit } = await import("@/lib/feature-gate");
+    const maxWorkflows = getFeatureLimit({ plan: user.subscription_plan }, "maxWorkflows");
+    
+    // Get current usage counts
+    const currentWorkflowCount = await prisma.workflows.count({
+      where: { user_id: userId },
+    });
+    
+    const currentExecutionCount = await prisma.executions.count({
+      where: { user_id: userId },
+    });
+
+    // For MVP, execution limits are not enforced per plan, but we'll return null for unlimited
+    // This can be expanded later if needed
+    const maxExecutions: number | null = null; // Unlimited for MVP
+
+    // 6. Build and return response
+    // Use the new enum field as primary source, fallback to legacy field for backward compatibility
+    const { SubscriptionStatus } = await import("@prisma/client");
+    const subscriptionStatusValue: "SUBSCRIBED" | "UNSUBSCRIBED" = user.subscriptionStatus === SubscriptionStatus.SUBSCRIBED 
+      ? "SUBSCRIBED"
+      : user.subscriptionStatus === SubscriptionStatus.UNSUBSCRIBED
+      ? "UNSUBSCRIBED"
+      : (user.subscription_status === "active" || user.subscription_status === "trialing" 
+        ? "SUBSCRIBED" 
+        : "UNSUBSCRIBED");
+
     const response = {
-      plan: user.plan || null,
-      subscriptionStatus: user.subscriptionStatus || null,
-      subscriptionRenewalAt: user.subscriptionRenewalAt
-        ? user.subscriptionRenewalAt.toISOString()
+      plan: user.subscription_plan || null,
+      current_plan: user.subscription_plan || null, // Alias for consistency
+      next_plan: user.pending_subscription_plan || null,
+      subscriptionStatus: subscriptionStatusValue, // New enum field value (SUBSCRIBED/UNSUBSCRIBED)
+      subscriptionStatusLegacy: user.subscription_status || null, // Legacy field for reference
+      subscriptionRenewalAt: user.subscription_renewal_at
+        ? user.subscription_renewal_at.toISOString()
         : null,
-      trialEndsAt: user.trialEndsAt
-        ? user.trialEndsAt.toISOString()
+      trialEndsAt: user.trial_ends_at
+        ? user.trial_ends_at.toISOString()
         : null,
-      addOns: user.addOns || [],
-      stripeCustomerId: user.stripeCustomerId || null,
-      hasPaymentMethod,
+      addOns: user.subscription_add_ons || [],
+      stripeCustomerId: user.stripe_customer_id || null,
+      hasPaymentMethod: hasPaymentMethod || user.has_active_payment_method || false,
       billingPeriod, // "monthly" | "yearly" | null
+      can_change_plan: canChangePlan,
+      days_until_next_change: daysUntilNextChange,
+      usage_limits: {
+        workflows: {
+          current: currentWorkflowCount,
+          max: maxWorkflows > 0 ? maxWorkflows : null, // null means unlimited
+        },
+        executions: {
+          current: currentExecutionCount,
+          max: maxExecutions, // null means unlimited for MVP
+        },
+      },
     };
 
     return NextResponse.json(response, { status: 200 });

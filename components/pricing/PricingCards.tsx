@@ -1,8 +1,7 @@
 "use client";
-
 import { motion } from "framer-motion";
 import { Check, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 interface PricingCardsProps {
   isYearly: boolean;
@@ -71,7 +70,7 @@ const plans = [
   },
 ];
 
-export default function PricingCards({ isYearly }: PricingCardsProps) {
+const PricingCards = ({ isYearly }: PricingCardsProps) => {
   const getPrice = (monthlyPrice: number) => {
     if (isYearly) {
       return Math.round(monthlyPrice * 0.8);
@@ -159,5 +158,10 @@ export default function PricingCards({ isYearly }: PricingCardsProps) {
       ))}
     </div>
   );
-}
+};
+
+export default PricingCards;
+
+
+
 

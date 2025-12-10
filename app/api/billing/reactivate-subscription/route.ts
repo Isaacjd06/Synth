@@ -45,12 +45,12 @@ export async function POST(req: Request) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
-        stripeSubscriptionId: true,
-        subscriptionStatus: true,
+        stripe_subscription_id: true,
+        subscription_status: true,
       },
     });
 
-    if (!user || !user.stripeSubscriptionId) {
+    if (!user || !user.stripe_subscription_id) {
       return NextResponse.json(
         {
           success: false,
@@ -62,8 +62,8 @@ export async function POST(req: Request) {
     }
 
     // 3. Check if subscription is scheduled to cancel
-    if (user.subscriptionStatus !== "cancels_at_period_end" && 
-        user.subscriptionStatus !== "canceled") {
+    if (user.subscription_status !== "cancels_at_period_end" && 
+        user.subscription_status !== "canceled") {
       return NextResponse.json(
         {
           success: false,
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
     // 4. Reactivate subscription in Stripe
     const subscription = await stripe.subscriptions.update(
-      user.stripeSubscriptionId,
+      user.stripe_subscription_id,
       {
         cancel_at_period_end: false,
       }
@@ -89,12 +89,14 @@ export async function POST(req: Request) {
       ? new Date(subscription.current_period_end * 1000)
       : null;
 
+    const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
     await prisma.user.update({
       where: { id: userId },
       data: {
-        subscriptionStatus: subscription.status,
-        subscriptionRenewalAt: renewalAt,
-        subscriptionEndsAt: null, // Clear cancellation date
+        subscription_status: subscription.status,
+        subscriptionStatus: mapStripeStatusToSubscriptionStatus(subscription.status),
+        subscription_renewal_at: renewalAt,
+        subscription_ends_at: null, // Clear cancellation date
       },
     });
 

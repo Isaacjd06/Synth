@@ -38,7 +38,7 @@ export async function POST(req: Request) {
         id: true,
         email: true,
         name: true,
-        stripeCustomerId: true,
+        stripe_customer_id: true,
       },
     });
 
@@ -49,8 +49,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Ensure they have a stripeCustomerId (create if needed)
-    let customerId = user.stripeCustomerId;
+    // 3. Ensure they have a stripe_customer_id (create if needed)
+    let customerId = user.stripe_customer_id;
 
     if (!customerId) {
       // Create Stripe customer if it doesn't exist
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
       await prisma.user.update({
         where: { id: userId },
         data: {
-          stripeCustomerId: customer.id,
+          stripe_customer_id: customer.id,
         },
       });
 
@@ -80,9 +80,11 @@ export async function POST(req: Request) {
     }
 
     // 4. Create SetupIntent for the Stripe customer
+    // Use usage: "off_session" for future payments (subscriptions)
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ["card"],
+      usage: "off_session", // For future payments
       metadata: {
         userId,
       },

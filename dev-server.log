@@ -1,0 +1,358 @@
+
+> synth@0.1.0 dev
+> next dev
+
+   ▲ Next.js 16.0.7 (Turbopack)
+   - Local:         http://localhost:3000
+   - Network:       http://10.1.106.81:3000
+   - Environments: .env.local, .env
+
+ ✓ Starting...
+ ✓ Ready in 1579ms
+[AUTH] ✅ Configuring Google OAuth provider
+[AUTH] Initializing NextAuth with 1 provider(s)
+[AUTH] ✅ Configuring Google OAuth provider
+[AUTH] Initializing NextAuth with 1 provider(s)
+[AUTH] ✅ Configuring Google OAuth provider
+[AUTH] Initializing NextAuth with 1 provider(s)
+[33m[auth][warn][debug-enabled][0m Read more: https://warnings.authjs.dev
+[31m[auth][error][0m UnknownAction: Unsupported action. Read more at https://errors.authjs.dev#unknownaction
+    at Object.signin (c:\synth\.next\dev\server\chunks\97170_@auth_core_10bb14dd._.js:2773:35)
+    at AuthInternal (c:\synth\.next\dev\server\chunks\97170_@auth_core_10bb14dd._.js:5133:31)
+    at async Auth (c:\synth\.next\dev\server\chunks\97170_@auth_core_10bb14dd._.js:5370:34)
+    at async AppRouteRouteModule.do (c:\synth\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:5:37789)
+    at async AppRouteRouteModule.handle (c:\synth\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:5:45045)
+    at async responseGenerator (c:\synth\.next\dev\server\chunks\node_modules_next_830cf173._.js:16104:38)
+    at async AppRouteRouteModule.handleResponse (c:\synth\node_modules\next\dist\compiled\next-server\app-route-turbo.runtime.dev.js:1:187851)
+    at async handleResponse (c:\synth\.next\dev\server\chunks\node_modules_next_830cf173._.js:16166:32)
+    at async handler (c:\synth\.next\dev\server\chunks\node_modules_next_830cf173._.js:16219:13)
+    at async DevServer.renderToResponseWithComponentsImpl (c:\synth\node_modules\next\dist\server\base-server.js:1413:9)
+    at async DevServer.renderPageComponent (c:\synth\node_modules\next\dist\server\base-server.js:1465:24)
+    at async DevServer.renderToResponseImpl (c:\synth\node_modules\next\dist\server\base-server.js:1515:32)
+    at async DevServer.pipeImpl (c:\synth\node_modules\next\dist\server\base-server.js:1021:25)
+    at async NextNodeServer.handleCatchallRenderRequest (c:\synth\node_modules\next\dist\server\next-server.js:394:17)
+    at async DevServer.handleRequestImpl (c:\synth\node_modules\next\dist\server\base-server.js:912:17)
+    at async c:\synth\node_modules\next\dist\server\dev\next-dev-server.js:382:20
+    at async Span.traceAsyncFn (c:\synth\node_modules\next\dist\trace\trace.js:157:20)
+    at async DevServer.handleRequest (c:\synth\node_modules\next\dist\server\dev\next-dev-server.js:378:24)
+    at async invokeRender (c:\synth\node_modules\next\dist\server\lib\router-server.js:240:21)
+    at async handleRequest (c:\synth\node_modules\next\dist\server\lib\router-server.js:436:24)
+    at async requestHandlerImpl (c:\synth\node_modules\next\dist\server\lib\router-server.js:484:13)
+    at async Server.requestListener (c:\synth\node_modules\next\dist\server\lib\start-server.js:226:13)
+ GET /api/auth/signin/google 302 in 1429ms (compile: 1212ms, proxy.ts: 197ms, render: 21ms)
+ ○ Compiling / ...
+ GET / 200 in 3.7s (compile: 3.4s, proxy.ts: 5ms, render: 268ms)
+ GET / 200 in 182ms (compile: 12ms, proxy.ts: 10ms, render: 160ms)
+[AUTH] redirect: Called with url: http://localhost:3000/dashboard baseUrl: http://localhost:3000
+[AUTH] redirect: Same origin URL, allowing: http://localhost:3000/dashboard
+[90m[auth][debug]:[0m adapter_getSessionAndUser {
+  "args": [
+    "7b2c5176-71c7-4ab7-bfad-703be9b561fb"
+  ]
+}
+prisma:query SELECT 1
+prisma:query SELECT "public"."sessions"."id", "public"."sessions"."sessionToken", "public"."sessions"."userId", "public"."sessions"."expires" FROM "public"."sessions" WHERE ("public"."sessions"."sessionToken" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+[AUTH] session: Called for user: c0720eb0-aebc-4bb6-81d3-95f4eade80c2
+[AUTH] session: Creating session for user: c0720eb0-aebc-4bb6-81d3-95f4eade80c2
+prisma:query UPDATE "public"."User" SET "last_login_at" = $1 WHERE ("public"."User"."id" = $2 AND 1=1) RETURNING "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons"
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in
+c:\synth\.next\dev\server\chunks\[root-of-the-server]__ea43abfd._.js:999:155
+
+  996     });
+  997 }
+  998 // 2. Fetch user from Prisma with billing fields
+→ 999 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({
+        where: {
+          id: "c0720eb0-aebc-4bb6-81d3-95f4eade80c2"
+        },
+        select: {
+          id: true,
+          email: true,
+          stripe_customer_id: true,
+          stripe_subscription_id: true,
+          subscription_plan: true,
+          pending_subscription_plan: true,
+          ~~~~~~~~~~~~~~~~~~~~~~~~~
+          subscription_status: true,
+          subscription_renewal_at: true,
+          trial_ends_at: true,
+          subscription_add_ons: true,
+          last_plan_change_at: true,
+          has_active_payment_method: true,
+      ?   name?: true,
+      ?   google_id?: true,
+      ?   avatar_url?: true,
+      ?   email_verified?: true,
+      ?   provider?: true,
+      ?   last_login_at?: true,
+      ?   created_at?: true,
+      ?   subscription_ends_at?: true,
+      ?   subscription_started_at?: true,
+      ?   stripe_payment_method_id?: true,
+      ?   MemoryActionsTaken?: true,
+      ?   MemoryAutomation?: true,
+      ?   MemoryCategory?: true,
+      ?   MemoryItem?: true,
+      ?   MemoryOpportunity?: true,
+      ?   MemoryPainPoint?: true,
+      ?   MemoryRoadmap?: true,
+      ?   MemoryStrategy?: true,
+      ?   accounts?: true,
+      ?   advisory_insights?: true,
+      ?   api_keys?: true,
+      ?   audit_logs?: true,
+      ?   chat_messages?: true,
+      ?   connections?: true,
+      ?   executions?: true,
+      ?   knowledge?: true,
+      ?   memory?: true,
+      ?   purchase_logs?: true,
+      ?   sessions?: true,
+      ?   subscription_cancel_reasons?: true,
+      ?   usage_logs?: true,
+      ?   workflows?: true,
+      ?   business_rules?: true,
+      ?   glossary?: true,
+      ?   knowledge_files?: true,
+      ?   structured_knowledge?: true,
+      ?   workflow_learned_patterns?: true,
+      ?   _count?: true
+        }
+      })
+
+Unknown field `pending_subscription_plan` for select statement on model `User`. Available options are marked with ?.
+[AUTH] redirect: Called with url: http://localhost:3000/dashboard baseUrl: http://localhost:3000
+[AUTH] redirect: Same origin URL, allowing: http://localhost:3000/dashboard
+[90m[auth][debug]:[0m adapter_getSessionAndUser {
+  "args": [
+    "7b2c5176-71c7-4ab7-bfad-703be9b561fb"
+  ]
+}
+prisma:query SELECT "public"."accounts"."id", "public"."accounts"."providerAccountId" FROM "public"."accounts" WHERE ("public"."accounts"."userId" = $1 AND "public"."accounts"."provider" = $2) LIMIT $3 OFFSET $4
+[AUTH] ✅ Configuring Google OAuth provider
+[AUTH] Initializing NextAuth with 1 provider(s)
+[33m[auth][warn][debug-enabled][0m Read more: https://warnings.authjs.dev
+[AUTH] redirect: Called with url: /dashboard baseUrl: http://localhost:3000
+[AUTH] redirect: Relative URL, returning: http://localhost:3000/dashboard
+prisma:query SELECT "public"."sessions"."id", "public"."sessions"."sessionToken", "public"."sessions"."userId", "public"."sessions"."expires" FROM "public"."sessions" WHERE ("public"."sessions"."sessionToken" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."created_at", "public"."User"."trial_ends_at", "public"."User"."subscription_status" FROM "public"."User" WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+[90m[auth][debug]:[0m CREATE_PKCECODEVERIFIER {
+  "name": "authjs.pkce.code_verifier",
+  "payload": "u8ttglmEo8NkY_63X3ptEx13t4m4y9W1qnTvQA_Wwzc",
+  "COOKIE_TTL": 900,
+  "expires": "2025-12-09T20:49:55.702Z"
+}
+[90m[auth][debug]:[0m authorization url is ready {
+  "url": "https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=1048501433950-vtoian9vbu2csh4v2t0g2hcn56rtedur.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fcallback%2Fgoogle&prompt=consent&access_type=offline&scope=openid+email+profile&code_challenge=Qe49d3TXKiXEG3L8nG13CEea0t-p4aozmhfphzl8sWY&code_challenge_method=S256",
+  "cookies": [
+    {
+      "name": "authjs.pkce.code_verifier",
+      "value": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwia2lkIjoiYlFBdTdzU2phZGN3ZFZwbmV6b3lSQjdjY3FHVDRzQWdSUmxxNGRSX1dIWGFQb3hzdVhfT2RCbm1UMHJ2RWRHMmdWT0Z1SV83S0JKT3A1WkFiS0dzeFEifQ..OTENWfzknIWUzYHFgh3usw.gi5I3py2L16-N3k3jxUPVV7WCRtRsshTGN48quHIzuJvTrmiAqsRhtfvQdt1LrVj9f5R50JuXFBpXtwJ21SPYb8gBFt6wAOZf7inG8GQVtWecMB00ZCjj2_H-ymzegGbg2rQSI-UZtsDdeQBLZYrdqMSJlbUNjSuCQImRU5jXtYpFtNoyyOkuMc0msUIv9mz.gT04Th-2u8mZYNlb1qYKYjytPtbLogHqI0OEVRG-uhM",
+      "options": {
+        "httpOnly": true,
+        "sameSite": "lax",
+        "path": "/",
+        "secure": false,
+        "maxAge": 900,
+        "expires": "2025-12-09T20:49:55.702Z"
+      }
+    }
+  ],
+  "provider": {
+    "id": "google",
+    "name": "Google",
+    "type": "oidc",
+    "issuer": "https://accounts.google.com",
+    "style": {
+      "brandColor": "#1a73e8"
+    },
+    "clientId": "1048501433950-vtoian9vbu2csh4v2t0g2hcn56rtedur.apps.googleusercontent.com",
+    "clientSecret": "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",
+    "authorization": {
+      "url": "https://authjs.dev/?prompt=consent&access_type=offline&response_type=code&scope=openid+email+profile"
+    },
+    "signinUrl": "http://localhost:3000/api/auth/signin/google",
+    "callbackUrl": "http://localhost:3000/api/auth/callback/google",
+    "wellKnown": "https://accounts.google.com/.well-known/openid-configuration",
+    "checks": [
+      "pkce"
+    ]
+  }
+}
+ POST / 303 in 182ms (compile: 7ms, proxy.ts: 12ms, render: 164ms)
+prisma:query SELECT "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons" FROM "public"."User" WHERE "public"."User"."id" IN ($1) OFFSET $2
+[AUTH] session: Called for user: c0720eb0-aebc-4bb6-81d3-95f4eade80c2
+[AUTH] session: Creating session for user: c0720eb0-aebc-4bb6-81d3-95f4eade80c2
+[2025-12-09T20:34:55.739Z] ERROR [app/api/billing/state] {
+  error: '\n' +
+    'Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in\n' +
+    'c:\\synth\\.next\\dev\\server\\chunks\\[root-of-the-server]__ea43abfd._.js:999:155\n' +
+    '\n' +
+    '  996     });\n' +
+    '  997 }\n' +
+    '  998 // 2. Fetch user from Prisma with billing fields\n' +
+    '→ 999 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({\n' +
+    '        where: {\n' +
+    '          id: "c0720eb0-aebc-4bb6-81d3-95f4eade80c2"\n' +
+    '        },\n' +
+    '        select: {\n' +
+    '          id: true,\n' +
+    '          email: true,\n' +
+    '          stripe_customer_id: true,\n' +
+    '          stripe_subscription_id: true,\n' +
+    '          subscription_plan: true,\n' +
+    '          pending_subscription_plan: true,\n' +
+    '          ~~~~~~~~~~~~~~~~~~~~~~~~~\n' +
+    '          subscription_status: true,\n' +
+    '          subscription_renewal_at: true,\n' +
+    '          trial_ends_at: true,\n' +
+    '          subscription_add_ons: true,\n' +
+    '          last_plan_change_at: true,\n' +
+    '          has_active_payment_method: true,\n' +
+    '      ?   name?: true,\n' +
+    '      ?   google_id?: true,\n' +
+    '      ?   avatar_url?: true,\n' +
+    '      ?   email_verified?: true,\n' +
+    '      ?   provider?: true,\n' +
+    '      ?   last_login_at?: true,\n' +
+    '      ?   created_at?: true,\n' +
+    '      ?   subscription_ends_at?: true,\n' +
+    '      ?   subscription_started_at?: true,\n' +
+    '      ?   stripe_payment_method_id?: true,\n' +
+    '      ?   MemoryActionsTaken?: true,\n' +
+    '      ?   MemoryAutomation?: true,\n' +
+    '      ?   MemoryCategory?: true,\n' +
+    '      ?   MemoryItem?: true,\n' +
+    '      ?   MemoryOpportunity?: true,\n' +
+    '      ?   MemoryPainPoint?: true,\n' +
+    '      ?   MemoryRoadmap?: true,\n' +
+    '      ?   MemoryStrategy?: true,\n' +
+    '      ?   accounts?: true,\n' +
+    '      ?   advisory_insights?: true,\n' +
+    '      ?   api_keys?: true,\n' +
+    '      ?   audit_logs?: true,\n' +
+    '      ?   chat_messages?: true,\n' +
+    '      ?   connections?: true,\n' +
+    '      ?   executions?: true,\n' +
+    '      ?   knowledge?: true,\n' +
+    '      ?   memory?: true,\n' +
+    '      ?   purchase_logs?: true,\n' +
+    '      ?   sessions?: true,\n' +
+    '      ?   subscription_cancel_reasons?: true,\n' +
+    '      ?   usage_logs?: true,\n' +
+    '      ?   workflows?: true,\n' +
+    '      ?   business_rules?: true,\n' +
+    '      ?   glossary?: true,\n' +
+    '      ?   knowledge_files?: true,\n' +
+    '      ?   structured_knowledge?: true,\n' +
+    '      ?   workflow_learned_patterns?: true,\n' +
+    '      ?   _count?: true\n' +
+    '        }\n' +
+    '      })\n' +
+    '\n' +
+    'Unknown field `pending_subscription_plan` for select statement on model `User`. Available options are marked with ?.',
+  stack: 'PrismaClientValidationError: \n' +
+    'Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique()` invocation in\n' +
+    'c:\\synth\\.next\\dev\\server\\chunks\\[root-of-the-server]__ea43abfd._.js:999:155\n' +
+    '\n' +
+    '  996     });\n' +
+    '  997 }\n' +
+    '  998 // 2. Fetch user from Prisma with billing fields\n' +
+    '→ 999 const user = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].user.findUnique({\n' +
+    '        where: {\n' +
+    '          id: "c0720eb0-aebc-4bb6-81d3-95f4eade80c2"\n' +
+    '        },\n' +
+    '        select: {\n' +
+    '          id: true,\n' +
+    '          email: true,\n' +
+    '          stripe_customer_id: true,\n' +
+    '          stripe_subscription_id: true,\n' +
+    '          subscription_plan: true,\n' +
+    '          pending_subscription_plan: true,\n' +
+    '          ~~~~~~~~~~~~~~~~~~~~~~~~~\n' +
+    '          subscription_status: true,\n' +
+    '          subscription_renewal_at: true,\n' +
+    '          trial_ends_at: true,\n' +
+    '          subscription_add_ons: true,\n' +
+    '          last_plan_change_at: true,\n' +
+    '          has_active_payment_method: true,\n' +
+    '      ?   name?: true,\n' +
+    '      ?   google_id?: true,\n' +
+    '      ?   avatar_url?: true,\n' +
+    '      ?   email_verified?: true,\n' +
+    '      ?   provider?: true,\n' +
+    '      ?   last_login_at?: true,\n' +
+    '      ?   created_at?: true,\n' +
+    '      ?   subscription_ends_at?: true,\n' +
+    '      ?   subscription_started_at?: true,\n' +
+    '      ?   stripe_payment_method_id?: true,\n' +
+    '      ?   MemoryActionsTaken?: true,\n' +
+    '      ?   MemoryAutomation?: true,\n' +
+    '      ?   MemoryCategory?: true,\n' +
+    '      ?   MemoryItem?: true,\n' +
+    '      ?   MemoryOpportunity?: true,\n' +
+    '      ?   MemoryPainPoint?: true,\n' +
+    '      ?   MemoryRoadmap?: true,\n' +
+    '      ?   MemoryStrategy?: true,\n' +
+    '      ?   accounts?: true,\n' +
+    '      ?   advisory_insights?: true,\n' +
+    '      ?   api_keys?: true,\n' +
+    '      ?   audit_logs?: true,\n' +
+    '      ?   chat_messages?: true,\n' +
+    '      ?   connections?: true,\n' +
+    '      ?   executions?: true,\n' +
+    '      ?   knowledge?: true,\n' +
+    '      ?   memory?: true,\n' +
+    '      ?   purchase_logs?: true,\n' +
+    '      ?   sessions?: true,\n' +
+    '      ?   subscription_cancel_reasons?: true,\n' +
+    '      ?   usage_logs?: true,\n' +
+    '      ?   workflows?: true,\n' +
+    '      ?   business_rules?: true,\n' +
+    '      ?   glossary?: true,\n' +
+    '      ?   knowledge_files?: true,\n' +
+    '      ?   structured_knowledge?: true,\n' +
+    '      ?   workflow_learned_patterns?: true,\n' +
+    '      ?   _count?: true\n' +
+    '        }\n' +
+    '      })\n' +
+    '\n' +
+    'Unknown field `pending_subscription_plan` for select statement on model `User`. Available options are marked with ?.\n' +
+    '    at Nn (c:\\synth\\node_modules\\@prisma\\client\\runtime\\library.js:29:1363)\n' +
+    '    at ei.handleRequestError (c:\\synth\\node_modules\\@prisma\\client\\runtime\\library.js:121:6911)\n' +
+    '    at ei.handleAndLogRequestError (c:\\synth\\node_modules\\@prisma\\client\\runtime\\library.js:121:6593)\n' +
+    '    at ei.request (c:\\synth\\node_modules\\@prisma\\client\\runtime\\library.js:121:6300)\n' +
+    '    at async a (c:\\synth\\node_modules\\@prisma\\client\\runtime\\library.js:130:9551)\n' +
+    '    at async GET (c:\\synth\\.next\\dev\\server\\chunks\\[root-of-the-server]__ea43abfd._.js:999:22)\n' +
+    '    at async AppRouteRouteModule.do (c:\\synth\\node_modules\\next\\dist\\compiled\\next-server\\app-route-turbo.runtime.dev.js:5:37789)\n' +
+    '    at async AppRouteRouteModule.handle (c:\\synth\\node_modules\\next\\dist\\compiled\\next-server\\app-route-turbo.runtime.dev.js:5:45045)\n' +
+    '    at async responseGenerator (c:\\synth\\.next\\dev\\server\\chunks\\node_modules_next_e53fbf30._.js:16104:38)\n' +
+    '    at async AppRouteRouteModule.handleResponse (c:\\synth\\node_modules\\next\\dist\\compiled\\next-server\\app-route-turbo.runtime.dev.js:1:187851)\n' +
+    '    at async handleResponse (c:\\synth\\.next\\dev\\server\\chunks\\node_modules_next_e53fbf30._.js:16166:32)\n' +
+    '    at async handler (c:\\synth\\.next\\dev\\server\\chunks\\node_modules_next_e53fbf30._.js:16219:13)\n' +
+    '    at async DevServer.renderToResponseWithComponentsImpl (c:\\synth\\node_modules\\next\\dist\\server\\base-server.js:1413:9)\n' +
+    '    at async DevServer.renderPageComponent (c:\\synth\\node_modules\\next\\dist\\server\\base-server.js:1465:24)\n' +
+    '    at async DevServer.renderToResponseImpl (c:\\synth\\node_modules\\next\\dist\\server\\base-server.js:1515:32)\n' +
+    '    at async DevServer.pipeImpl (c:\\synth\\node_modules\\next\\dist\\server\\base-server.js:1021:25)\n' +
+    '    at async NextNodeServer.handleCatchallRenderRequest (c:\\synth\\node_modules\\next\\dist\\server\\next-server.js:394:17)\n' +
+    '    at async DevServer.handleRequestImpl (c:\\synth\\node_modules\\next\\dist\\server\\base-server.js:912:17)\n' +
+    '    at async c:\\synth\\node_modules\\next\\dist\\server\\dev\\next-dev-server.js:382:20\n' +
+    '    at async Span.traceAsyncFn (c:\\synth\\node_modules\\next\\dist\\trace\\trace.js:157:20)\n' +
+    '    at async DevServer.handleRequest (c:\\synth\\node_modules\\next\\dist\\server\\dev\\next-dev-server.js:378:24)\n' +
+    '    at async invokeRender (c:\\synth\\node_modules\\next\\dist\\server\\lib\\router-server.js:240:21)\n' +
+    '    at async handleRequest (c:\\synth\\node_modules\\next\\dist\\server\\lib\\router-server.js:436:24)\n' +
+    '    at async requestHandlerImpl (c:\\synth\\node_modules\\next\\dist\\server\\lib\\router-server.js:484:13)\n' +
+    '    at async Server.requestListener (c:\\synth\\node_modules\\next\\dist\\server\\lib\\start-server.js:226:13)',
+  metadata: { userId: 'c0720eb0-aebc-4bb6-81d3-95f4eade80c2' }
+}
+ GET /api/billing/state 500 in 1967ms (compile: 545ms, proxy.ts: 7ms, render: 1415ms)
+prisma:query UPDATE "public"."User" SET "last_login_at" = $1 WHERE ("public"."User"."id" = $2 AND 1=1) RETURNING "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons"
+prisma:query UPDATE "public"."User" SET "last_login_at" = $1, "google_id" = $2, "avatar_url" = $3, "email_verified" = $4, "provider" = $5 WHERE ("public"."User"."id" = $6 AND 1=1) RETURNING "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons"
+prisma:query SELECT "public"."accounts"."id", "public"."accounts"."providerAccountId" FROM "public"."accounts" WHERE ("public"."accounts"."userId" = $1 AND "public"."accounts"."provider" = $2) LIMIT $3 OFFSET $4
+prisma:query SELECT "public"."User"."id", "public"."User"."stripe_customer_id" FROM "public"."User" WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."created_at", "public"."User"."trial_ends_at", "public"."User"."subscription_status" FROM "public"."User" WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query UPDATE "public"."User" SET "last_login_at" = $1, "google_id" = $2, "avatar_url" = $3, "email_verified" = $4, "provider" = $5 WHERE ("public"."User"."id" = $6 AND 1=1) RETURNING "public"."User"."id", "public"."User"."email", "public"."User"."name", "public"."User"."google_id", "public"."User"."avatar_url", "public"."User"."email_verified", "public"."User"."provider", "public"."User"."last_login_at", "public"."User"."created_at", "public"."User"."stripe_customer_id", "public"."User"."stripe_subscription_id", "public"."User"."subscription_ends_at", "public"."User"."subscription_plan", "public"."User"."subscription_started_at", "public"."User"."subscription_status", "public"."User"."trial_ends_at", "public"."User"."stripe_payment_method_id", "public"."User"."subscription_renewal_at", "public"."User"."subscription_add_ons"
+prisma:query SELECT "public"."User"."id", "public"."User"."stripe_customer_id" FROM "public"."User" WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+ GET / 200 in 169ms (compile: 7ms, proxy.ts: 7ms, render: 154ms)

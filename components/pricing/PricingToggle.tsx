@@ -1,5 +1,4 @@
 "use client";
-
 import { motion } from "framer-motion";
 
 interface PricingToggleProps {
@@ -7,7 +6,7 @@ interface PricingToggleProps {
   onToggle: (yearly: boolean) => void;
 }
 
-export default function PricingToggle({ isYearly, onToggle }: PricingToggleProps) {
+const PricingToggle = ({ isYearly, onToggle }: PricingToggleProps) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -59,5 +58,10 @@ export default function PricingToggle({ isYearly, onToggle }: PricingToggleProps
       </div>
     </motion.div>
   );
-}
+};
+
+export default PricingToggle;
+
+
+
 

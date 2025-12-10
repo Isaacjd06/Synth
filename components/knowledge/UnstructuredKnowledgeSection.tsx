@@ -1,14 +1,12 @@
-"use client";
-
 import { useState, useEffect, useRef } from "react";
 import { Save, Clock, Check, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-export default function UnstructuredKnowledgeSection() {
+const UnstructuredKnowledgeSection = () => {
   const [content, setContent] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -33,88 +31,17 @@ export default function UnstructuredKnowledgeSection() {
     };
   }, [content]);
 
-  // Load existing unstructured knowledge on mount
-  useEffect(() => {
-    const loadKnowledge = async () => {
-      try {
-        const response = await fetch("/api/knowledge");
-        if (response.ok) {
-          const data = await response.json();
-          if (data.ok && data.items) {
-            // Find unstructured knowledge item (type: "text" or "markdown")
-            const unstructuredItem = data.items.find(
-              (item: { type: string; title: string }) =>
-                item.type === "text" || item.type === "markdown" || item.title === "Unstructured Knowledge"
-            );
-            if (unstructuredItem?.content) {
-              setContent(unstructuredItem.content);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load knowledge:", error);
-      }
-    };
-    loadKnowledge();
-  }, []);
-
   const handleAutoSave = async () => {
     if (!content.trim()) return;
     
     setSaveStatus('saving');
     try {
-      // Check if we have an existing unstructured knowledge item
-      const response = await fetch("/api/knowledge");
-      let existingId: string | null = null;
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ok && data.items) {
-          const existing = data.items.find(
-            (item: { type: string; title: string }) =>
-              item.type === "text" || item.type === "markdown" || item.title === "Unstructured Knowledge"
-          );
-          existingId = existing?.id || null;
-        }
-      }
-
-      if (existingId) {
-        // Update existing
-        const updateResponse = await fetch(`/api/knowledge/${existingId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "Unstructured Knowledge",
-            type: "markdown",
-            content: content,
-          }),
-        });
-        
-        if (!updateResponse.ok) {
-          throw new Error("Failed to save");
-        }
-      } else {
-        // Create new
-        const createResponse = await fetch("/api/knowledge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "Unstructured Knowledge",
-            type: "markdown",
-            content: content,
-          }),
-        });
-        
-        if (!createResponse.ok) {
-          throw new Error("Failed to save");
-        }
-      }
-
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 800));
       setSaveStatus('saved');
       setLastSaved(new Date());
       setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (error) {
-      console.error("Save error:", error);
+    } catch {
       setSaveStatus('error');
     }
   };
@@ -122,58 +49,12 @@ export default function UnstructuredKnowledgeSection() {
   const handleManualSave = async () => {
     setSaveStatus('saving');
     try {
-      // Check if we have an existing unstructured knowledge item
-      const response = await fetch("/api/knowledge");
-      let existingId: string | null = null;
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ok && data.items) {
-          const existing = data.items.find(
-            (item: { type: string; title: string }) =>
-              item.type === "text" || item.type === "markdown" || item.title === "Unstructured Knowledge"
-          );
-          existingId = existing?.id || null;
-        }
-      }
-
-      if (existingId) {
-        // Update existing
-        const updateResponse = await fetch(`/api/knowledge/${existingId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "Unstructured Knowledge",
-            type: "markdown",
-            content: content,
-          }),
-        });
-        
-        if (!updateResponse.ok) {
-          throw new Error("Failed to save");
-        }
-      } else {
-        // Create new
-        const createResponse = await fetch("/api/knowledge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: "Unstructured Knowledge",
-            type: "markdown",
-            content: content,
-          }),
-        });
-        
-        if (!createResponse.ok) {
-          throw new Error("Failed to save");
-        }
-      }
-
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 800));
       setSaveStatus('saved');
       setLastSaved(new Date());
       setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (error) {
-      console.error("Save error:", error);
+    } catch {
       setSaveStatus('error');
     }
   };
@@ -265,5 +146,9 @@ Examples of what you can include:
       </Card>
     </div>
   );
-}
+};
+
+export default UnstructuredKnowledgeSection;
+
+
 

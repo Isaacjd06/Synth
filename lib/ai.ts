@@ -1,11 +1,13 @@
 import { WorkflowBlueprint, WorkflowBlueprintSchema } from "@/lib/schemas/workflowSchema";
 import { fetchKnowledgeContext, formatKnowledgeContextForPrompt } from "@/lib/knowledge-context";
 import { BRANDING_INSTRUCTIONS } from "@/lib/ai-branding";
+import { SYNTH_IDENTITY } from "@/lib/synth-identity";
+import { getLearnedPatterns, formatLearnedPatternsForPrompt } from "@/lib/workflow/workflowLearner";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 // Note: ANTHROPIC_BACKEND_API_KEY is reserved for future n8n integration
 // Currently, OpenAI handles all AI operations (chat + workflow generation)
-const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY; // Reserved for future use
+const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY?.trim(); // Reserved for future use
 
 type GenerateWorkflowBlueprintResult =
   | {
@@ -37,10 +39,18 @@ export async function generateWorkflowBlueprint(
 
   // Fetch knowledge base context if userId is provided
   let knowledgeContext = "";
+  let learnedPatternsContext = "";
   if (userId) {
     try {
       const context = await fetchKnowledgeContext(userId);
       knowledgeContext = formatKnowledgeContextForPrompt(context);
+      
+      // Fetch learned workflow patterns
+      const patterns = await getLearnedPatterns(userId, {
+        minConfidence: 0.3,
+        limit: 20,
+      });
+      learnedPatternsContext = formatLearnedPatternsForPrompt(patterns);
     } catch (error) {
       console.warn("Failed to fetch knowledge context:", error);
       // Continue without knowledge context if fetch fails
@@ -55,13 +65,13 @@ export async function generateWorkflowBlueprint(
     };
   }
 
-  return generateWithOpenAI(intent, knowledgeContext);
+  return generateWithOpenAI(intent, knowledgeContext, learnedPatternsContext);
 }
 
 /**
  * Generate workflow blueprint using OpenAI
  */
-async function generateWithOpenAI(intent: string, knowledgeContext: string = ""): Promise<GenerateWorkflowBlueprintResult> {
+async function generateWithOpenAI(intent: string, knowledgeContext: string = "", learnedPatternsContext: string = ""): Promise<GenerateWorkflowBlueprintResult> {
   if (!OPENAI_API_KEY) {
     return {
       ok: false,
@@ -70,12 +80,19 @@ async function generateWithOpenAI(intent: string, knowledgeContext: string = "")
   }
 
   // Build system prompt with knowledge context if available
-  let systemPrompt = `You are a workflow automation expert for Synth. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
+  let systemPrompt = `${SYNTH_IDENTITY}
 
-${BRANDING_INSTRUCTIONS}`;
+${BRANDING_INSTRUCTIONS}
+
+## YOUR SPECIFIC ROLE IN WORKFLOW GENERATION
+You are creating workflows as part of Synth's automation capabilities.`;
 
   if (knowledgeContext) {
-    systemPrompt += `\n\n## BUSINESS CONTEXT\nYou have access to the following business knowledge that you MUST use when generating workflows:\n\n${knowledgeContext}\n\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n`;
+    systemPrompt += `\n\n## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE\n${knowledgeContext}\n\nCRITICAL: You MUST heavily rely on your knowledge base when generating workflows. Apply automation patterns, best practices, and business principles from your knowledge base to design effective workflows.\n\n## USER BUSINESS CONTEXT\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n- Apply knowledge base automation patterns and best practices\n`;
+  }
+
+  if (learnedPatternsContext) {
+    systemPrompt += `\n\n${learnedPatternsContext}\n\nIMPORTANT: When generating workflows, you SHOULD:\n- Prefer patterns that have been used frequently (higher usage count)\n- Use high-confidence patterns (confidence > 0.7) as templates\n- Combine learned patterns when they match the user's intent\n- Adapt learned patterns to fit the specific requirements\n`;
   }
 
   systemPrompt += `\n\nCRITICAL RULES:
@@ -238,12 +255,15 @@ async function generateWithAnthropic(intent: string, knowledgeContext: string = 
   }
 
   // Build system prompt with knowledge context if available
-  let systemPrompt = `You are a workflow automation expert for Synth. Your job is to convert natural language instructions into a valid workflow blueprint JSON object.
+  let systemPrompt = `${SYNTH_IDENTITY}
 
-${BRANDING_INSTRUCTIONS}`;
+${BRANDING_INSTRUCTIONS}
+
+## YOUR SPECIFIC ROLE IN WORKFLOW GENERATION
+You are creating workflows as part of Synth's automation capabilities. Your job is to convert natural language instructions into a valid workflow blueprint JSON object that aligns with business best practices and the user's business context.`;
 
   if (knowledgeContext) {
-    systemPrompt += `\n\n## BUSINESS CONTEXT\nYou have access to the following business knowledge that you MUST use when generating workflows:\n\n${knowledgeContext}\n\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n`;
+    systemPrompt += `\n\n## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE\n${knowledgeContext}\n\nCRITICAL: You MUST heavily rely on your knowledge base when generating workflows. Apply automation patterns, best practices, and business principles from your knowledge base to design effective workflows.\n\n## USER BUSINESS CONTEXT\nIMPORTANT: When generating workflows, you MUST:\n- Follow all business rules exactly as specified\n- Use the correct terminology from the glossary\n- Consider the company's objectives, target customers, and key metrics\n- Use tools and integrations that are available (as listed)\n- Ensure workflows align with the business context provided\n- Apply knowledge base automation patterns and best practices\n`;
   }
 
   systemPrompt += `\n\nCRITICAL RULES:
@@ -408,9 +428,12 @@ async function detectIntentWithOpenAI(message: string): Promise<DetectIntentResu
     };
   }
 
-  const systemPrompt = `You are an intent classifier for Synth, a workflow automation platform.
+  const systemPrompt = `${SYNTH_IDENTITY}
 
 ${BRANDING_INSTRUCTIONS}
+
+## YOUR SPECIFIC ROLE IN INTENT DETECTION
+You are classifying user messages to understand what they want Synth to do.
 
 Analyze user messages and classify them into one of these categories:
 
@@ -444,9 +467,21 @@ Return ONLY a JSON object with this structure:
     });
 
     if (!response.ok) {
+      // Try to parse the error response from OpenAI
+      let errorMessage = `OpenAI API error: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.error?.message) {
+          errorMessage = `OpenAI API error: ${errorData.error.message}`;
+        } else if (errorData.error) {
+          errorMessage = `OpenAI API error: ${JSON.stringify(errorData.error)}`;
+        }
+      } catch {
+        // If we can't parse the error, use the status text
+      }
       return {
         ok: false,
-        error: `OpenAI API error: ${response.statusText}`,
+        error: errorMessage,
       };
     }
 
@@ -498,9 +533,12 @@ async function detectIntentWithAnthropic(message: string): Promise<DetectIntentR
     };
   }
 
-  const systemPrompt = `You are an intent classifier for Synth, a workflow automation platform.
+  const systemPrompt = `${SYNTH_IDENTITY}
 
 ${BRANDING_INSTRUCTIONS}
+
+## YOUR SPECIFIC ROLE IN INTENT DETECTION
+You are classifying user messages to understand what they want Synth to do.
 
 Analyze user messages and classify them into one of these categories:
 

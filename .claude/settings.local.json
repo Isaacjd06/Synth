@@ -64,7 +64,11 @@
       "Bash(done)",
       "Bash(if exist .env.local type .env.local)",
       "Bash(taskkill:*)",
-      "Bash(timeout /t 2 /nobreak)"
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(git clone:*)",
+      "Bash(npx dotenv-cli:*)",
+      "Bash(set:*)",
+      "Bash(timeout /t 3 /nobreak)"
     ],
     "deny": [],
     "ask": []

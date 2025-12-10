@@ -43,25 +43,72 @@ if (typeof EdgeRuntime === "undefined") {
   });
 }
 
+// Validate Google OAuth credentials before creating provider
+// This prevents NextAuth Configuration errors
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+if (!googleClientId || googleClientId.trim() === "") {
+  const errorMsg = "GOOGLE_CLIENT_ID is required but not set. Please set it in your .env.local file.";
+  console.error(`[AUTH] ❌ ${errorMsg}`);
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error(errorMsg);
+  }
+}
+
+if (!googleClientSecret || googleClientSecret.trim() === "") {
+  const errorMsg = "GOOGLE_CLIENT_SECRET is required but not set. Please set it in your .env.local file.";
+  console.error(`[AUTH] ❌ ${errorMsg}`);
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error(errorMsg);
+  }
+}
+
+// Build providers array - always include Google provider if credentials exist
+// Don't conditionally build providers array - NextAuth needs it at initialization
+const providers = [];
+
+// Always try to add Google provider - NextAuth will handle validation
+if (googleClientId && googleClientSecret) {
+  console.log("[AUTH] ✅ Configuring Google OAuth provider");
+  providers.push(
+    Google({
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      // Explicit OIDC configuration for NextAuth v5 compliance
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+          scope: "openid email profile", // Explicit scopes for OIDC
+        },
+      },
+      // Ensure proper profile mapping
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+        };
+      },
+    })
+  );
+} else {
+  console.warn("[AUTH] ⚠️  Google OAuth provider not configured - missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+}
+
+// Log provider configuration for debugging
+console.log("[AUTH] Initializing NextAuth with", providers.length, "provider(s)");
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: customPrismaAdapter,
   secret: process.env.AUTH_SECRET,
   basePath: "/api/auth",
   trustHost: true,
   debug: process.env.NODE_ENV === "development",
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          prompt: "consent",
-          access_type: "offline",
-          response_type: "code",
-        },
-      },
-    }),
-  ],
+  providers,
   callbacks: {
     async signIn({ user, account, profile }) {
       try {
@@ -166,15 +213,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.last_login_at = user.last_login_at ?? null;
 
         // Populate Stripe subscription fields (safely with nullish coalescing)
-        session.user.stripeCustomerId = user.stripeCustomerId ?? null;
-        session.user.stripeSubscriptionId = user.stripeSubscriptionId ?? null;
-        session.user.subscriptionStatus = user.subscriptionStatus ?? null;
-        session.user.plan = user.plan ?? null;
-        session.user.subscriptionStartedAt = user.subscriptionStartedAt ?? null;
-        session.user.subscriptionEndsAt = user.subscriptionEndsAt ?? null;
-        session.user.trialEndsAt = user.trialEndsAt ?? null;
-        session.user.addOns = user.addOns ?? null;
-        session.user.stripePaymentMethodId = user.stripePaymentMethodId ?? null;
+        session.user.stripeCustomerId = user.stripe_customer_id ?? null;
+        session.user.stripeSubscriptionId = user.stripe_subscription_id ?? null;
+        session.user.subscriptionStatus = user.subscription_status ?? null;
+        session.user.plan = user.subscription_plan ?? null;
+        session.user.subscriptionStartedAt = user.subscription_started_at ?? null;
+        session.user.subscriptionEndsAt = user.subscription_ends_at ?? null;
+        session.user.trialEndsAt = user.trial_ends_at ?? null;
+        session.user.addOns = user.subscription_add_ons ?? null;
+        session.user.stripePaymentMethodId = user.stripe_payment_method_id ?? null;
 
         // Update last_login_at (fire-and-forget, don't await)
         prisma.user

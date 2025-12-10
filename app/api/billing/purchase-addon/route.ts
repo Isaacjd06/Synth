@@ -91,14 +91,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Fetch user from DB and ensure stripeCustomerId exists
+    // 4. Fetch user from DB and ensure stripe_customer_id exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
-        stripeCustomerId: true,
-        stripeSubscriptionId: true,
-        addOns: true,
+        stripe_customer_id: true,
+        stripe_subscription_id: true,
+        subscription_add_ons: true,
       },
     });
 
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!user.stripeCustomerId) {
+    if (!user.stripe_customer_id) {
       return NextResponse.json(
         { error: "Stripe customer not found. Please set up payment method first." },
         { status: 400 }
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     // CRITICAL: Add-ons can ONLY be purchased with the first subscription payment.
     // If user already has a subscription (any status), they CANNOT purchase addons.
-    if (user.stripeSubscriptionId) {
+    if (user.stripe_subscription_id) {
       return NextResponse.json(
         {
           success: false,
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
     }
 
     // Check if addon is already owned
-    if (user.addOns.includes(addon)) {
+    if (user.subscription_add_ons.includes(addon)) {
       return NextResponse.json(
         {
           success: false,
@@ -142,7 +142,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Fetch customer's default payment method from Stripe
-    const customer = await stripe.customers.retrieve(user.stripeCustomerId, {
+    const customer = await stripe.customers.retrieve(user.stripe_customer_id, {
       expand: ["invoice_settings.default_payment_method"],
     });
 
@@ -180,7 +180,7 @@ export async function POST(req: Request) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: price.unit_amount,
       currency: price.currency,
-      customer: user.stripeCustomerId,
+      customer: user.stripe_customer_id,
       payment_method: defaultPaymentMethodId,
       off_session: true, // Charge without customer being present
       confirm: true, // Confirm immediately
@@ -216,16 +216,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // 9. On successful payment, update user's addOns field in Prisma
+    // 9. On successful payment, update user's subscription_add_ons field in Prisma
     // Append the addon identifier if not already present
-    const updatedAddOns = user.addOns.includes(addon)
-      ? user.addOns
-      : [...user.addOns, addon];
+    const updatedAddOns = user.subscription_add_ons.includes(addon)
+      ? user.subscription_add_ons
+      : [...user.subscription_add_ons, addon];
 
     await prisma.user.update({
       where: { id: userId },
       data: {
-        addOns: updatedAddOns,
+        subscription_add_ons: updatedAddOns,
       },
     });
 

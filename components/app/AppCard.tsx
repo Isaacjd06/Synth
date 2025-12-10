@@ -1,5 +1,3 @@
-"use client";
-
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +10,7 @@ const AppCard = ({ children, className }: AppCardProps) => {
   return (
     <div
       className={cn(
-        "bg-card border border-border rounded-lg p-6 transition-colors",
+        "bg-card/90 border border-border/60 rounded-lg p-6 shadow-sm",
         className
       )}
     >
@@ -22,4 +20,6 @@ const AppCard = ({ children, className }: AppCardProps) => {
 };
 
 export default AppCard;
+
+
 

@@ -12,7 +12,7 @@ export async function getOrCreateStripeCustomer(userId: string): Promise<string>
       id: true,
       email: true,
       name: true,
-      stripeCustomerId: true,
+      stripe_customer_id: true,
     },
   });
 
@@ -20,12 +20,34 @@ export async function getOrCreateStripeCustomer(userId: string): Promise<string>
     throw new Error("User not found");
   }
 
-  // Return existing customer ID if it exists
-  if (user.stripeCustomerId) {
-    return user.stripeCustomerId;
+  // If we have a customer ID, verify it exists in Stripe
+  if (user.stripe_customer_id) {
+    try {
+      // Verify the customer exists in Stripe
+      const customer = await stripe.customers.retrieve(user.stripe_customer_id);
+      
+      // If customer was deleted, it will have deleted: true
+      if (customer.deleted) {
+        // Customer was deleted, create a new one
+        console.warn(`Customer ${user.stripe_customer_id} was deleted in Stripe, creating new customer`);
+      } else {
+        // Customer exists and is valid
+        return user.stripe_customer_id;
+      }
+    } catch (error: unknown) {
+      // Customer doesn't exist (404) or other error
+      const stripeError = error as { code?: string; type?: string };
+      if (stripeError.code === "resource_missing" || stripeError.type === "StripeInvalidRequestError") {
+        // Customer doesn't exist in Stripe, create a new one
+        console.warn(`Customer ${user.stripe_customer_id} not found in Stripe, creating new customer`);
+      } else {
+        // Re-throw other errors
+        throw error;
+      }
+    }
   }
 
-  // Create new Stripe customer
+  // Create new Stripe customer (either doesn't exist or was deleted)
   const customer = await stripe.customers.create({
     email: user.email,
     name: user.name,
@@ -37,7 +59,7 @@ export async function getOrCreateStripeCustomer(userId: string): Promise<string>
   // Update user with Stripe customer ID
   await prisma.user.update({
     where: { id: userId },
-    data: { stripeCustomerId: customer.id },
+    data: { stripe_customer_id: customer.id },
   });
 
   return customer.id;
@@ -353,9 +375,9 @@ export async function validateAddonPurchaseWithSubscription(
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      stripeSubscriptionId: true,
-      subscriptionStatus: true,
-      addOns: true,
+      stripe_subscription_id: true,
+      subscription_status: true,
+      subscription_add_ons: true,
     },
   });
 
@@ -365,7 +387,7 @@ export async function validateAddonPurchaseWithSubscription(
 
   // If user has any subscription (any status), addons cannot be purchased
   // Addons can only be purchased with the first subscription payment
-  if (user.stripeSubscriptionId) {
+  if (user.stripe_subscription_id) {
     return {
       valid: false,
       error: "Add-ons can only be purchased with the first subscription payment. You already have a subscription.",
@@ -373,7 +395,7 @@ export async function validateAddonPurchaseWithSubscription(
   }
 
   // Check if any addon is already owned
-  const alreadyOwned = addons.filter(addon => user.addOns.includes(addon));
+  const alreadyOwned = addons.filter(addon => user.subscription_add_ons.includes(addon));
   if (alreadyOwned.length > 0) {
     return {
       valid: false,

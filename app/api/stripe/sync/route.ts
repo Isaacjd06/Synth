@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       where: { id: userId },
       select: {
         id: true,
-        stripeCustomerId: true,
+        stripe_customer_id: true,
       },
     });
 
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     }
 
     // 3. Check if user has Stripe customer ID
-    if (!user.stripeCustomerId) {
+    if (!user.stripe_customer_id) {
       return NextResponse.json(
         {
           error:
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
     // 4. Query Stripe for latest subscription
     const subscriptions = await stripe.subscriptions.list({
-      customer: user.stripeCustomerId,
+      customer: user.stripe_customer_id,
       status: "all",
       limit: 1,
     });
@@ -51,12 +51,12 @@ export async function POST(req: Request) {
       await prisma.user.update({
         where: { id: userId },
         data: {
-          subscriptionStatus: "inactive",
-          stripeSubscriptionId: null,
-          plan: null,
-          subscriptionStartedAt: null,
-          subscriptionEndsAt: null,
-          trialEndsAt: null,
+          subscription_status: "inactive",
+          stripe_subscription_id: null,
+          subscription_plan: null,
+          subscription_started_at: null,
+          subscription_ends_at: null,
+          trial_ends_at: null,
         },
       });
 
@@ -99,12 +99,12 @@ export async function POST(req: Request) {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        stripeSubscriptionId: subscription.id,
-        subscriptionStatus: subscription.status,
-        plan: planName || undefined, // Store plan name instead of price ID
-        subscriptionStartedAt: currentPeriodStart,
-        subscriptionEndsAt: currentPeriodEnd,
-        trialEndsAt: trialEnd,
+        stripe_subscription_id: subscription.id,
+        subscription_status: subscription.status,
+        subscription_plan: planName || undefined, // Store plan name instead of price ID
+        subscription_started_at: currentPeriodStart,
+        subscription_ends_at: currentPeriodEnd,
+        trial_ends_at: trialEnd,
       },
     });
 

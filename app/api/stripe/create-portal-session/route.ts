@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       where: { id: userId },
       select: {
         id: true,
-        stripeCustomerId: true,
+        stripe_customer_id: true,
       },
     });
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!user.stripeCustomerId) {
+    if (!user.stripe_customer_id) {
       return NextResponse.json(
         { error: "No Stripe customer found. Please create a subscription first." },
         { status: 400 }
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     // 3. Create billing portal session
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
+      customer: user.stripe_customer_id,
       return_url: `${baseUrl}/settings`,
     });
 

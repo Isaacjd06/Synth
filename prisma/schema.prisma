@@ -4,7 +4,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
 }
 
 model CoreFramework {
@@ -108,16 +112,23 @@ model User {
   provider                    String?                       @default("google")
   last_login_at               DateTime?                     @default(now())
   created_at                  DateTime                      @default(now())
-  stripe_customer_id          String?                       @unique
+  stripe_customer_id          String?
   stripe_subscription_id      String?
   subscription_ends_at        DateTime?
   subscription_plan           String?
   subscription_started_at     DateTime?
   subscription_status         String?                       @default("inactive")
+  subscriptionStatus          SubscriptionStatus            @default(UNSUBSCRIBED)
   trial_ends_at               DateTime?
   stripe_payment_method_id    String?
   subscription_renewal_at     DateTime?
   subscription_add_ons        String[]                      @default([])
+  has_active_payment_method   Boolean                       @default(false)
+  last_plan_change_at         DateTime?
+  payment_method_added_at     DateTime?
+  pending_subscription_plan   String?
+  executions                  executions[]
+  knowledge                   knowledge[]
   MemoryActionsTaken          MemoryActionsTaken[]
   MemoryAutomation            MemoryAutomation[]
   MemoryCategory              MemoryCategory[]
@@ -130,20 +141,19 @@ model User {
   advisory_insights           advisory_insights[]
   api_keys                    api_keys[]
   audit_logs                  audit_logs[]
+  business_rules              business_rules[]
   chat_messages               chat_messages[]
   connections                 connections[]
-  executions                  executions[]
-  knowledge                   knowledge[]
+  glossary                    glossary[]
+  knowledge_files             knowledge_files[]
   memory                      memory[]
   purchase_logs               purchase_logs[]
   sessions                    Session[]
+  structured_knowledge        structured_knowledge[]
   subscription_cancel_reasons subscription_cancel_reasons[]
   usage_logs                  usage_logs[]
+  workflow_learned_patterns   workflow_learned_patterns[]
   workflows                   workflows[]
-  business_rules              business_rules[]
-  glossary                    glossary[]
-  knowledge_files             knowledge_files[]
-  structured_knowledge        structured_knowledge[]
 }
 
 model Account {
@@ -152,12 +162,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -247,12 +257,12 @@ model executions {
   input_data             Json?
   output_data            Json?
   status                 String    @default("unknown")
-  pipedream_execution_id String?   @unique
+  pipedream_execution_id String?
+  created_at             DateTime  @default(now())
+  finished_at            DateTime?
   error_message          String?
   execution_time_ms      Int?
-  created_at             DateTime  @default(now())
   started_at             DateTime?
-  finished_at            DateTime?
   User                   User      @relation(fields: [user_id], references: [id])
   workflows              workflows @relation(fields: [workflow_id], references: [id])
 
@@ -266,12 +276,12 @@ model knowledge {
   id         String   @id
   user_id    String
   title      String
-  type       String   @default("text")
   content    String?
   file_url   String?
   file_type  String?
-  metadata   Json?
   created_at DateTime @default(now())
+  metadata   Json?
+  type       String   @default("text")
   updated_at DateTime
   User       User     @relation(fields: [user_id], references: [id])
 
@@ -281,7 +291,7 @@ model knowledge {
 model business_rules {
   id         String   @id @default(uuid())
   user_id    String
-  content    String   @db.Text
+  content    String
   priority   String   @default("medium")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -294,7 +304,7 @@ model glossary {
   id         String   @id @default(uuid())
   user_id    String
   term       String
-  definition String   @db.Text
+  definition String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   User       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -311,7 +321,7 @@ model knowledge_files {
   file_type         String
   file_size         Int
   storage_path      String?
-  processed_content String?  @db.Text
+  processed_content String?
   status            String   @default("uploading")
   error_message     String?
   created_at        DateTime @default(now())
@@ -436,22 +446,48 @@ model webhook_event_logs {
 }
 
 model workflows {
-  id                         String             @id
+  id                         String                      @id
   user_id                    String
   name                       String
   description                String?
   intent                     String?
   trigger                    Json?
   actions                    Json?
-  active                     Boolean            @default(false)
+  active                     Boolean                     @default(false)
   n8n_workflow_id            String?
-  created_at                 DateTime           @default(now())
+  created_at                 DateTime                    @default(now())
   updated_at                 DateTime
+  created_by_ai              Boolean                     @default(false)
   last_deployed_at           DateTime?
   pipedream_deployment_state String?
-  MemoryAutomation           MemoryAutomation[]
   executions                 executions[]
-  User                       User               @relation(fields: [user_id], references: [id])
+  MemoryAutomation           MemoryAutomation[]
+  learned_patterns           workflow_learned_patterns[]
+  User                       User                        @relation(fields: [user_id], references: [id])
 
   @@index([user_id, active])
+  @@index([created_by_ai])
+}
+
+model workflow_learned_patterns {
+  id                   String     @id @default(uuid())
+  user_id              String
+  pattern_type         String
+  pattern_name         String
+  pattern_description  String?
+  extracted_data       Json
+  source_workflow_id   String?
+  source_workflow_name String?
+  usage_count          Int        @default(1)
+  confidence_score     Float      @default(0.5)
+  tags                 String[]
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+  last_used_at         DateTime?
+  workflows            workflows? @relation(fields: [source_workflow_id], references: [id])
+  User                 User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, pattern_type])
+  @@index([pattern_type, usage_count])
+  @@index([source_workflow_id])
 }

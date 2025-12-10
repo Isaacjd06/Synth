@@ -7,6 +7,7 @@ import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { checkWorkflowLimit } from "@/lib/feature-gate";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
+import { learnFromWorkflow } from "@/lib/workflow/workflowLearner";
 
 interface WorkflowCreateRequestBody {
   name: string;
@@ -14,6 +15,7 @@ interface WorkflowCreateRequestBody {
   intent?: string;
   trigger?: Record<string, unknown>;
   actions?: Array<Record<string, unknown>>;
+  created_by_ai?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -26,7 +28,7 @@ export async function POST(req: Request) {
 
     const body = await req.json() as WorkflowCreateRequestBody;
 
-    const { name, description, intent, trigger, actions } = body;
+    const { name, description, intent, trigger, actions, created_by_ai } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -91,6 +93,7 @@ export async function POST(req: Request) {
         trigger: (trigger as Prisma.InputJsonValue) || {},
         actions: (actions as Prisma.InputJsonValue) || [],
         active: false,
+        created_by_ai: created_by_ai || false,
       },
     });
 
@@ -106,6 +109,20 @@ export async function POST(req: Request) {
       user_id: userId,
       workflow_name: workflow.name,
     });
+
+    // Learn from manually created workflows (async, don't wait)
+    if (!created_by_ai) {
+      learnFromWorkflow(workflow.id, userId, {
+        name: workflow.name,
+        description: workflow.description,
+        intent: workflow.intent,
+        trigger: workflow.trigger,
+        actions: workflow.actions,
+        created_by_ai: false,
+      }).catch(error => {
+        console.error("Failed to learn from workflow:", error);
+      });
+    }
 
     return NextResponse.json(workflow, { status: 201 });
   } catch (error: unknown) {

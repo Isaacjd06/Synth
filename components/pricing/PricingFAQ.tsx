@@ -1,5 +1,4 @@
 "use client";
-
 import { motion } from "framer-motion";
 import {
   Accordion,
@@ -41,7 +40,7 @@ const faqs = [
   },
 ];
 
-export default function PricingFAQ() {
+const PricingFAQ = () => {
   return (
     <section className="py-16 md:py-20">
       <div className="container mx-auto px-6">
@@ -87,5 +86,10 @@ export default function PricingFAQ() {
       </div>
     </section>
   );
-}
+};
+
+export default PricingFAQ;
+
+
+
 

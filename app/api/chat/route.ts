@@ -17,6 +17,7 @@ import {
   updateMemoryAccess,
 } from "@/lib/memory";
 import { BRANDING_INSTRUCTIONS } from "@/lib/ai-branding";
+import { SYNTH_IDENTITY } from "@/lib/synth-identity";
 
 const chatLimiter = createRateLimiter("chat", 20, 60);
 
@@ -119,6 +120,12 @@ export async function POST(req: Request) {
         // Ignore errors updating access time
       });
     }
+
+    // 6a. Fetch knowledge base context (user-specific + hardcoded) - ALWAYS REQUIRED
+    const { fetchKnowledgeContext, formatKnowledgeContextForPrompt } = await import("@/lib/knowledge-context");
+    const knowledgeContextData = await fetchKnowledgeContext(userId);
+    // Always include hardcoded knowledge - this is Synth's PRIMARY source of expertise
+    const knowledgeContext = formatKnowledgeContextForPrompt(knowledgeContextData, true);
 
     // 7. Detect intent using AI
     const intentResult = await detectChatIntent(message);
@@ -258,10 +265,11 @@ export async function POST(req: Request) {
       // general_response
       actionTaken = "general_response";
 
-      // Generate a general AI response with memory context
+      // Generate a general AI response with memory context and knowledge base
       const generalResponseResult = await generateGeneralResponse(
         message,
-        memoryContext
+        memoryContext,
+        knowledgeContext
       );
 
       if (generalResponseResult.ok && generalResponseResult.response) {
@@ -357,13 +365,15 @@ export async function POST(req: Request) {
  * 
  * @param message - User's message
  * @param memoryContext - Optional context from memory system
+ * @param knowledgeContext - Optional context from knowledge base (user-specific + hardcoded)
  */
 async function generateGeneralResponse(
   message: string,
   memoryContext?: string,
+  knowledgeContext?: string,
 ): Promise<{ ok: boolean; response?: string; error?: string }> {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY;
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
+  const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY?.trim();
 
   if (!OPENAI_API_KEY && !ANTHROPIC_BACKEND_API_KEY) {
     return {
@@ -388,10 +398,30 @@ async function generateGeneralResponse(
               {
                 role: "system",
                 content:
-                  `You are a helpful assistant for Synth, a workflow automation platform. Provide friendly, concise responses about workflow automation.
+                  `${SYNTH_IDENTITY}
 
-${BRANDING_INSTRUCTIONS}` +
-                  (memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}` : ""),
+${BRANDING_INSTRUCTIONS}
+
+Your capabilities include:
+- Providing strategic business advice and recommendations HEAVILY RELYING on your knowledge base
+- Analyzing workflow performance, statistics, and execution results using knowledge base frameworks
+- Understanding business context and applying knowledge from Synth's knowledge base
+- Generating workflows from natural language informed by automation best practices from knowledge base
+- Answering questions about business automation, strategy, and operations using knowledge base expertise
+
+## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE
+${knowledgeContext ? knowledgeContext : "Loading knowledge base..."}
+
+${memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}\n\n` : ""}
+
+CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You MUST:
+- Heavily rely on knowledge base frameworks, principles, and methodologies when providing advice
+- Reference specific knowledge base concepts when answering business questions
+- Apply knowledge base best practices to all strategic recommendations
+- Ground all business analysis in knowledge base principles
+- Use knowledge base terminology and frameworks consistently
+
+Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context.`,
               },
               {
                 role: "user",
@@ -399,13 +429,25 @@ ${BRANDING_INSTRUCTIONS}` +
               },
             ],
             temperature: 0.7,
-            max_tokens: 200,
+            max_tokens: 1000, // Increased for more comprehensive responses
           }),
         },
       );
 
       if (!response.ok) {
-        return { ok: false, error: "Failed to generate response" };
+        // Try to parse the error response from OpenAI
+        let errorMessage = "Failed to generate response";
+        try {
+          const errorData = await response.json();
+          if (errorData.error?.message) {
+            errorMessage = `OpenAI API error: ${errorData.error.message}`;
+          } else if (errorData.error) {
+            errorMessage = `OpenAI API error: ${JSON.stringify(errorData.error)}`;
+          }
+        } catch {
+          // If we can't parse the error, use the default message
+        }
+        return { ok: false, error: errorMessage };
       }
 
       const data = await response.json();
@@ -425,12 +467,32 @@ ${BRANDING_INSTRUCTIONS}` +
         },
         body: JSON.stringify({
           model: "claude-3-5-sonnet-20241022",
-          max_tokens: 200,
+          max_tokens: 1000, // Increased for more comprehensive responses
           system:
-            `You are a helpful assistant for Synth, a workflow automation platform. Provide friendly, concise responses about workflow automation.
+            `${SYNTH_IDENTITY}
 
-${BRANDING_INSTRUCTIONS}` +
-            (memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}` : ""),
+${BRANDING_INSTRUCTIONS}
+
+Your capabilities include:
+- Providing strategic business advice and recommendations HEAVILY RELYING on your knowledge base
+- Analyzing workflow performance, statistics, and execution results using knowledge base frameworks
+- Understanding business context and applying knowledge from Synth's knowledge base
+- Generating workflows from natural language informed by automation best practices from knowledge base
+- Answering questions about business automation, strategy, and operations using knowledge base expertise
+
+## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE
+${knowledgeContext ? knowledgeContext : "Loading knowledge base..."}
+
+${memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}\n\n` : ""}
+
+CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You MUST:
+- Heavily rely on knowledge base frameworks, principles, and methodologies when providing advice
+- Reference specific knowledge base concepts when answering business questions
+- Apply knowledge base best practices to all strategic recommendations
+- Ground all business analysis in knowledge base principles
+- Use knowledge base terminology and frameworks consistently
+
+Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context.`,
           messages: [
             {
               role: "user",
@@ -441,7 +503,19 @@ ${BRANDING_INSTRUCTIONS}` +
       });
 
       if (!response.ok) {
-        return { ok: false, error: "Failed to generate response" };
+        // Try to parse the error response from Anthropic
+        let errorMessage = "Failed to generate response";
+        try {
+          const errorData = await response.json();
+          if (errorData.error?.message) {
+            errorMessage = `Anthropic API error: ${errorData.error.message}`;
+          } else if (errorData.error) {
+            errorMessage = `Anthropic API error: ${JSON.stringify(errorData.error)}`;
+          }
+        } catch {
+          // If we can't parse the error, use the default message
+        }
+        return { ok: false, error: errorMessage };
       }
 
       const data = await response.json();

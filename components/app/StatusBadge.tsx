@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@/lib/utils";
 
 type BadgeVariant = "active" | "inactive" | "success" | "error" | "warning";
@@ -31,4 +29,6 @@ const StatusBadge = ({ variant, children }: StatusBadgeProps) => {
 };
 
 export default StatusBadge;
+
+
 

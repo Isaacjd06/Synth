@@ -168,10 +168,10 @@ export async function POST(req: Request) {
       where: { id: userId },
       select: {
         id: true,
-        stripeCustomerId: true,
-        stripeSubscriptionId: true,
-        subscriptionStatus: true,
-        addOns: true,
+        stripe_customer_id: true,
+        stripe_subscription_id: true,
+        subscription_status: true,
+        subscription_add_ons: true,
       },
     });
 
@@ -189,7 +189,7 @@ export async function POST(req: Request) {
     // If user already has a subscription (any status), addons cannot be purchased
     // Addons can only be purchased with the first subscription payment
     // Also, if they have an existing subscription, they should use switch-plan endpoint instead
-    if (existingUser.stripeSubscriptionId) {
+    if (existingUser.stripe_subscription_id) {
       // Check if they're trying to purchase addons with existing subscription
       if (addons.length > 0) {
         return NextResponse.json(
@@ -231,7 +231,7 @@ export async function POST(req: Request) {
       }
 
       // Check if addon is already owned
-      if (existingUser.addOns.includes(addonId)) {
+      if (existingUser.subscription_add_ons.includes(addonId)) {
         return NextResponse.json(
           {
             success: false,
@@ -367,20 +367,22 @@ export async function POST(req: Request) {
       : null;
 
     // Combine existing addons with new ones
-    const updatedAddOns = [...new Set([...existingUser.addOns, ...addons])];
+    const updatedAddOns = [...new Set([...existingUser.subscription_add_ons, ...addons])];
 
+    const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
     await prisma.user.update({
       where: { id: userId },
       data: {
-        stripeSubscriptionId: subscription.id,
-        plan: plan,
-        subscriptionStatus: subscription.status,
-        subscriptionRenewalAt: renewalAt,
-        trialEndsAt: trialEndsAt,
-        subscriptionStartedAt: new Date(),
-        subscriptionEndsAt: renewalAt,
-        addOns: updatedAddOns,
-        stripePaymentMethodId: paymentMethodId,
+        stripe_subscription_id: subscription.id,
+        subscription_plan: plan,
+        subscription_status: subscription.status,
+        subscriptionStatus: mapStripeStatusToSubscriptionStatus(subscription.status),
+        subscription_renewal_at: renewalAt,
+        trial_ends_at: trialEndsAt,
+        subscription_started_at: new Date(),
+        subscription_ends_at: renewalAt,
+        subscription_add_ons: updatedAddOns,
+        stripe_payment_method_id: paymentMethodId,
       },
     });
 

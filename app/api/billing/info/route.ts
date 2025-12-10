@@ -21,14 +21,17 @@ export async function GET(req: Request) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
-        stripeCustomerId: true,
-        stripeSubscriptionId: true,
-        stripePaymentMethodId: true,
-        subscriptionStatus: true,
-        plan: true,
-        addOns: true,
-        subscriptionEndsAt: true,
-        trialEndsAt: true,
+        stripe_customer_id: true,
+        stripe_subscription_id: true,
+        stripe_payment_method_id: true,
+        subscription_status: true,
+        subscription_plan: true,
+        pending_subscription_plan: true,
+        subscription_add_ons: true,
+        subscription_ends_at: true,
+        trial_ends_at: true,
+        payment_method_added_at: true,
+        last_plan_change_at: true,
       },
     });
 
@@ -41,23 +44,27 @@ export async function GET(req: Request) {
       has_customer: boolean;
       has_subscription: boolean;
       has_payment_method: boolean;
+      payment_method_added_at: string | null;
+      last_plan_change_at: string | null;
       subscription: Record<string, unknown> | null;
       payment_method: Record<string, unknown> | null;
       upcoming_invoice: Record<string, unknown> | null;
     } = {
-      has_customer: !!user.stripeCustomerId,
-      has_subscription: !!user.stripeSubscriptionId,
-      has_payment_method: !!user.stripePaymentMethodId,
+      has_customer: !!user.stripe_customer_id,
+      has_subscription: !!user.stripe_subscription_id,
+      has_payment_method: !!user.stripe_payment_method_id,
+      payment_method_added_at: user.payment_method_added_at?.toISOString() || null,
+      last_plan_change_at: user.last_plan_change_at?.toISOString() || null,
       subscription: null,
       payment_method: null,
       upcoming_invoice: null,
     };
 
     // 4. Get subscription details if exists
-    if (user.stripeSubscriptionId) {
+    if (user.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(
-          user.stripeSubscriptionId,
+          user.stripe_subscription_id,
         ) as Stripe.Subscription & {
           current_period_start?: number;
           current_period_end?: number;
@@ -66,8 +73,9 @@ export async function GET(req: Request) {
         response.subscription = {
           id: subscription.id,
           status: subscription.status,
-          plan: user.plan,
-          add_ons: user.addOns || [],
+          plan: user.subscription_plan, // Current active plan
+          pending_plan: user.pending_subscription_plan || null, // Plan that will be active on next payment
+          add_ons: user.subscription_add_ons || [],
           current_period_start: subscription.current_period_start
             ? new Date(subscription.current_period_start * 1000)
             : null,
@@ -85,10 +93,10 @@ export async function GET(req: Request) {
     }
 
     // 5. Get payment method details if exists
-    if (user.stripePaymentMethodId) {
+    if (user.stripe_payment_method_id) {
       try {
         const paymentMethod = await getPaymentMethod(
-          user.stripePaymentMethodId,
+          user.stripe_payment_method_id,
         );
 
         if (paymentMethod.card) {
@@ -107,10 +115,10 @@ export async function GET(req: Request) {
     }
 
     // 6. Get upcoming invoice if customer exists
-    if (user.stripeCustomerId) {
+    if (user.stripe_customer_id) {
       try {
         const upcomingInvoice = await getUpcomingInvoice(
-          user.stripeCustomerId,
+          user.stripe_customer_id,
         );
 
         if (upcomingInvoice) {

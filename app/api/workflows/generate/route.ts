@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
     const blueprint = aiResult.blueprint;
 
-    // 5. Store workflow blueprint in database
+    // 5. Store workflow blueprint in database (mark as AI-generated)
     const workflow = await prisma.workflows.create({
       data: {
         user_id: userId,
@@ -70,6 +70,7 @@ export async function POST(req: Request) {
         trigger: blueprint.trigger as Prisma.InputJsonValue, // Store as JSON
         actions: blueprint.actions as Prisma.InputJsonValue, // Store as JSON
         active: true,
+        created_by_ai: true, // Mark as AI-generated so we don't learn from it
       },
     });
 

@@ -1,80 +1,37 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash2, Save, X, AlertTriangle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/Button";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 interface Rule {
   id: string;
   content: string;
-  priority?: string;
 }
 
-export default function BusinessRulesSection() {
-  const [rules, setRules] = useState<Rule[]>([]);
+const BusinessRulesSection = () => {
+  const [rules, setRules] = useState<Rule[]>([
+    { id: "1", content: "Never offer discounts greater than 20% without manager approval" },
+    { id: "2", content: "Always respond to customer inquiries within 4 business hours" },
+  ]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [newRuleContent, setNewRuleContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // Load rules on mount
-  useEffect(() => {
-    loadRules();
-  }, []);
-
-  const loadRules = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/knowledge/business-rules");
-      const data = await response.json();
-      
-      if (data.ok && data.rules) {
-        setRules(data.rules);
-      }
-    } catch (error) {
-      console.error("Error loading rules:", error);
-      toast.error("Failed to load business rules");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAdd = async () => {
     if (!newRuleContent.trim()) return;
     
     setIsSaving(true);
-    try {
-      const response = await fetch("/api/knowledge/business-rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: newRuleContent.trim(),
-          priority: "medium",
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (data.ok && data.rule) {
-        setRules([...rules, data.rule]);
-        setNewRuleContent("");
-        setIsAdding(false);
-        toast.success("Business rule added");
-      } else {
-        throw new Error(data.error || "Failed to add rule");
-      }
-    } catch (error) {
-      console.error("Error adding rule:", error);
-      toast.error("Failed to add business rule");
-    } finally {
-      setIsSaving(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setRules([...rules, { id: crypto.randomUUID(), content: newRuleContent.trim() }]);
+    setNewRuleContent("");
+    setIsAdding(false);
+    setIsSaving(false);
   };
 
   const handleEdit = (rule: Rule) => {
@@ -86,32 +43,12 @@ export default function BusinessRulesSection() {
     if (!editContent.trim() || !editingId) return;
     
     setIsSaving(true);
-    try {
-      const response = await fetch("/api/knowledge/business-rules", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: editingId,
-          content: editContent.trim(),
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (data.ok && data.rule) {
-        setRules(rules.map(r => r.id === editingId ? data.rule : r));
-        setEditingId(null);
-        setEditContent("");
-        toast.success("Business rule updated");
-      } else {
-        throw new Error(data.error || "Failed to update rule");
-      }
-    } catch (error) {
-      console.error("Error updating rule:", error);
-      toast.error("Failed to update business rule");
-    } finally {
-      setIsSaving(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setRules(rules.map(r => r.id === editingId ? { ...r, content: editContent.trim() } : r));
+    setEditingId(null);
+    setEditContent("");
+    setIsSaving(false);
   };
 
   const handleCancelEdit = () => {
@@ -120,48 +57,11 @@ export default function BusinessRulesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this rule?")) return;
-    
     setIsSaving(true);
-    try {
-      const response = await fetch(`/api/knowledge/business-rules?id=${id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-      
-      if (data.ok) {
-        setRules(rules.filter(r => r.id !== id));
-        toast.success("Business rule deleted");
-      } else {
-        throw new Error(data.error || "Failed to delete rule");
-      }
-    } catch (error) {
-      console.error("Error deleting rule:", error);
-      toast.error("Failed to delete business rule");
-    } finally {
-      setIsSaving(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setRules(rules.filter(r => r.id !== id));
+    setIsSaving(false);
   };
-
-  if (loading) {
-    return (
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            Business Rules
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="h-4 bg-gray-800 rounded animate-pulse" />
-            <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -315,5 +215,10 @@ export default function BusinessRulesSection() {
       </Card>
     </div>
   );
-}
+};
+
+export default BusinessRulesSection;
+
+
+
 

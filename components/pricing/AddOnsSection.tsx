@@ -1,8 +1,7 @@
 "use client";
-
 import { motion } from "framer-motion";
 import { Zap, Rocket, Wrench, Plus } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 const capacityPacks = [
   { runs: "25k", price: 49 },
@@ -10,7 +9,7 @@ const capacityPacks = [
   { runs: "200k", price: 199 },
 ];
 
-export default function AddOnsSection() {
+const AddOnsSection = () => {
   return (
     <section className="py-16 md:py-20">
       <div className="container mx-auto px-6">
@@ -161,5 +160,10 @@ export default function AddOnsSection() {
       </div>
     </section>
   );
-}
+};
+
+export default AddOnsSection;
+
+
+
 

@@ -47,10 +47,10 @@ export async function POST(req: Request) {
     // 3. Get user's Stripe customer ID
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { stripeCustomerId: true },
+      select: { stripe_customer_id: true },
     });
 
-    if (!user || !user.stripeCustomerId) {
+    if (!user || !user.stripe_customer_id) {
       return NextResponse.json(
         {
           success: false,
@@ -62,12 +62,24 @@ export async function POST(req: Request) {
     }
 
     // 4. Attach payment method to customer
-    await attachPaymentMethod(user.stripeCustomerId, payment_method_id);
+    await attachPaymentMethod(user.stripe_customer_id, payment_method_id);
 
-    // 5. Update user in database
+    // 5. Check if this is the first time adding a payment method
+    const userWithPaymentMethod = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripe_payment_method_id: true, payment_method_added_at: true },
+    });
+
+    const isFirstPaymentMethod = !userWithPaymentMethod?.stripe_payment_method_id;
+
+    // 6. Update user in database
     await prisma.user.update({
       where: { id: userId },
-      data: { stripePaymentMethodId: payment_method_id },
+      data: {
+        stripe_payment_method_id: payment_method_id,
+        // Set payment_method_added_at only if this is the first time
+        ...(isFirstPaymentMethod && { payment_method_added_at: new Date() }),
+      },
     });
 
     // 6. Log audit event

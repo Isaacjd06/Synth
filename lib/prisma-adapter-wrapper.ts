@@ -21,10 +21,17 @@ export const customPrismaAdapter: Adapter = {
     // Map `image` to `avatar_url` and `emailVerified` to `email_verified`
     const { image, emailVerified, ...rest } = data;
     
+    // Generate ID if not provided (NextAuth might not always provide one)
+    let userId = rest.id;
+    if (!userId) {
+      const { randomUUID } = await import("crypto");
+      userId = randomUUID();
+    }
+    
     // Create user directly with Prisma using correct field names
     const user = await prisma.user.create({
       data: {
-        id: rest.id,
+        id: userId,
         name: rest.name || null,
         email: rest.email,
         avatar_url: image || null,

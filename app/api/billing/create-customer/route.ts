@@ -38,7 +38,7 @@ export async function POST(req: Request) {
         id: true,
         email: true,
         name: true,
-        stripeCustomerId: true,
+        stripe_customer_id: true,
       },
     });
 
@@ -50,9 +50,9 @@ export async function POST(req: Request) {
     }
 
     // 3. Return existing customer ID if it exists
-    if (user.stripeCustomerId) {
+    if (user.stripe_customer_id) {
       return NextResponse.json(
-        { stripeCustomerId: user.stripeCustomerId },
+        { stripeCustomerId: user.stripe_customer_id },
         { status: 200 }
       );
     }
@@ -72,11 +72,11 @@ export async function POST(req: Request) {
       },
     });
 
-    // 5. Save stripeCustomerId to the user via Prisma
+    // 5. Save stripe_customer_id to the user via Prisma
     await prisma.user.update({
       where: { id: userId },
       data: {
-        stripeCustomerId: customer.id,
+        stripe_customer_id: customer.id,
       },
     });
 

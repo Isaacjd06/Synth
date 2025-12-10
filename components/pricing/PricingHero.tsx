@@ -1,10 +1,9 @@
 "use client";
-
 import { motion } from "framer-motion";
 import { Shield, DollarSign, X } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
-export default function PricingHero() {
+const PricingHero = () => {
   const trustIndicators = [
     { icon: Shield, text: "Enterprise-grade automation engine" },
     { icon: DollarSign, text: "Predictable, fair usage pricing" },
@@ -89,5 +88,10 @@ export default function PricingHero() {
       </div>
     </section>
   );
-}
+};
+
+export default PricingHero;
+
+
+
 
