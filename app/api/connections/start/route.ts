@@ -1,77 +1,91 @@
 import { NextResponse } from "next/server";
-import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
+import { authenticateUser } from "@/lib/auth-helpers";
+import { getCurrentUserWithSubscription } from "@/lib/subscription";
 import { logError } from "@/lib/error-logger";
 import { initiateOAuthFlow } from "@/lib/pipedream-oauth";
+import { prisma } from "@/lib/prisma";
+import { requireIntegrationAccess } from "@/lib/integrations-plan";
+import { success, error } from "@/lib/api-response";
+import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
+
+// Rate limit: 10 connection attempts per minute
+const connectionStartLimiter = createRateLimiter("connection-start", 10, 60);
 
 /**
- * POST /api/connections/start
+ * GET /api/connections/start?service=xxxxx
  * 
  * Start an OAuth connection flow for a service.
- * Requires full access (paid or trial).
+ * Redirects user to provider's OAuth URL.
  * 
- * Body:
- * - serviceName: Name of the service to connect (e.g., "Slack", "Gmail")
+ * Query params:
+ * - service: Name of the service to connect (e.g., "slack", "gmail")
  */
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   try {
-    const authResult = await authenticateAndCheckSubscription();
+    // 0. Check rate limit
+    await rateLimitOrThrow(req, connectionStartLimiter);
+
+    // 1. Authenticate user
+    const authResult = await authenticateUser();
     if (authResult instanceof NextResponse) {
-      return authResult; // Returns 401 or 403
+      return authResult;
     }
     const { userId } = authResult;
 
-    const body = await req.json();
-    const { serviceName } = body;
+    // 2. Get user with subscription info
+    const user = await getCurrentUserWithSubscription(userId);
 
-    if (!serviceName) {
-      return NextResponse.json(
-        { error: "serviceName is required" },
-        { status: 400 }
+    // 3. Get service from query params
+    const { searchParams } = new URL(req.url);
+    const service = searchParams.get("service");
+
+    if (!service) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+      return NextResponse.redirect(
+        `${baseUrl}/app/connections?error=${encodeURIComponent("Please select a service to connect")}`
       );
     }
 
-    // Get base URL for callback
+    // 4. Check plan access
+    // During trial, treat user as if they have agency plan (all integrations)
+    const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+    const effectivePlan = isInTrial 
+      ? ("agency" as const)
+      : (user.subscription_plan || "free");
+
+    const accessCheck = requireIntegrationAccess(effectivePlan, service);
+    if (accessCheck) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+      return NextResponse.redirect(
+        `${baseUrl}/app/connections?error=${encodeURIComponent(accessCheck.error)}`
+      );
+    }
+
+    // 5. Get base URL for callback
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     const redirectUri = `${baseUrl}/api/connections/callback`;
 
-    // Initiate OAuth flow
+    // 6. Initiate OAuth flow via Pipedream (no branding exposed)
     const { authUrl, state } = await initiateOAuthFlow(
-      serviceName,
+      service,
       userId,
       redirectUri
     );
 
-    return NextResponse.json(
-      {
-        ok: true,
-        authUrl,
-        state,
-        serviceName,
-      },
-      { status: 200 }
-    );
-  } catch (error: unknown) {
-    logError("app/api/connections/start", error);
-    
-    const errorMessage = error instanceof Error ? error.message : "Internal server error";
-    
-    // Check if it's a configuration error
-    if (errorMessage.includes("not configured")) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Connection service not available. Please contact support.",
-        },
-        { status: 500 }
-      );
+    // 7. Redirect user to provider's OAuth URL
+    return NextResponse.redirect(authUrl);
+  } catch (err: unknown) {
+    // Handle rate limit errors specially
+    if (err instanceof NextResponse && err.status === 429) {
+      return err;
     }
 
-    return NextResponse.json(
-      {
-        ok: false,
-        error: errorMessage,
-      },
-      { status: 500 }
+    logError("app/api/connections/start", err);
+    
+    // Redirect to connections page with user-friendly error
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    return NextResponse.redirect(
+      `${baseUrl}/app/connections?error=${encodeURIComponent("Unable to start connection. Please try again or contact support.")}`
     );
   }
 }

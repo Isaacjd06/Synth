@@ -259,10 +259,12 @@ export async function updateWorkflow(
  * Trigger a manual run of a workflow in Pipedream
  * 
  * @param pipedreamWorkflowId - The Pipedream workflow ID to run
+ * @param inputData - Optional input data to pass to the workflow
  * @returns Execution ID and status
  */
 export async function runWorkflow(
-  pipedreamWorkflowId: string
+  pipedreamWorkflowId: string,
+  inputData?: Record<string, unknown>
 ): Promise<PipedreamExecution> {
   validateEnv();
 
@@ -275,7 +277,7 @@ export async function runWorkflow(
       `/users/${PIPEDREAM_USER_ID}/workflows/${pipedreamWorkflowId}/execute`,
       {
         method: "POST",
-        body: JSON.stringify({}), // Empty body for manual trigger
+        body: JSON.stringify(inputData || {}), // Include input data if provided
       }
     );
 

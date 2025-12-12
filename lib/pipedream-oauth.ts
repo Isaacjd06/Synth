@@ -1,8 +1,10 @@
 /**
- * Pipedream OAuth Integration for Synth
+ * OAuth Integration for Synth
  * 
- * Provides functions for managing OAuth connections through Pipedream.
+ * Provides functions for managing OAuth connections.
  * Handles OAuth flow initiation, callback processing, and connection management.
+ * 
+ * NOTE: All OAuth flows are proxied through Synth - users never see Pipedream branding.
  */
 
 import { PipedreamError } from "./pipedream";
@@ -136,7 +138,7 @@ export async function initiateOAuthFlow(
     // If all strategies fail, throw error
     throw new PipedreamError(
       `OAuth flow not available for service: ${serviceName}. ` +
-      `Please ensure the service is available in Pipedream or configure OAuth credentials.`
+      `Please ensure the service is properly configured or contact support.`
     );
   } catch (error) {
     if (error instanceof PipedreamError) {
@@ -253,7 +255,7 @@ export async function exchangeCodeForToken(
 
     throw new PipedreamError(
       `Failed to exchange authorization code for token. ` +
-      `Please ensure the service is properly configured in Pipedream or provide OAuth credentials.`
+      `Please ensure the service is properly configured or contact support.`
     );
   } catch (error) {
     if (error instanceof PipedreamError) {

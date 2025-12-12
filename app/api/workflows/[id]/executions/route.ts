@@ -52,7 +52,7 @@ export async function GET(
     }
 
     // 4. Check if workflow has a Pipedream ID
-    if (!workflow.n8n_workflow_id) {
+    if (!workflow.pipedream_workflow_id) {
       return NextResponse.json(
         {
           ok: false,
@@ -65,7 +65,7 @@ export async function GET(
     // 5. Call listExecutions from Pipedream
     let executions;
     try {
-      executions = await listExecutions(workflow.n8n_workflow_id);
+      executions = await listExecutions(workflow.pipedream_workflow_id);
     } catch (error) {
       if (error instanceof PipedreamError) {
         return NextResponse.json(

@@ -87,10 +87,12 @@ export async function POST(req: Request) {
             select: { 
               id: true,
               pending_subscription_plan: true,
+              stripe_subscription_id: true, // Check if they have a Stripe subscription
             },
           });
 
-          if (user) {
+          // Only sync if user has a Stripe subscription ID (allows manual overrides for testing)
+          if (user && user.stripe_subscription_id) {
             // When payment fails, fetch the actual subscription status from Stripe
             // Stripe typically sets subscription to "past_due" or "unpaid" when payment fails
             let actualSubscriptionStatus = "past_due"; // Default to past_due for payment failures
@@ -142,10 +144,12 @@ export async function POST(req: Request) {
               id: true, 
               subscription_status: true,
               pending_subscription_plan: true,
+              stripe_subscription_id: true, // Check if they have a Stripe subscription
             },
           });
 
-          if (user) {
+          // Only sync if user has a Stripe subscription ID (allows manual overrides for testing)
+          if (user && user.stripe_subscription_id) {
             // Payment succeeded → user has paid → SUBSCRIBED
             // Fetch actual subscription status to ensure accuracy
             let actualSubscriptionStatus = "active"; // Default for successful payment
@@ -205,10 +209,14 @@ export async function POST(req: Request) {
         // Find user by customer ID
         const user = await prisma.user.findFirst({
           where: { stripe_customer_id: subscription.customer as string },
-          select: { id: true },
+          select: { 
+            id: true,
+            stripe_subscription_id: true, // Check if they have a Stripe subscription
+          },
         });
 
-        if (user) {
+        // Only sync if user has a Stripe subscription ID (allows manual overrides for testing)
+        if (user && user.stripe_subscription_id) {
           const status = subscription.status;
           const trialEnd = subscription.trial_end
             ? new Date(subscription.trial_end * 1000)
@@ -285,10 +293,14 @@ export async function POST(req: Request) {
         // Find user by customer ID
         const user = await prisma.user.findFirst({
           where: { stripe_customer_id: subscription.customer as string },
-          select: { id: true },
+          select: { 
+            id: true,
+            stripe_subscription_id: true, // Check if they have a Stripe subscription
+          },
         });
 
-        if (user) {
+        // Only sync if user has a Stripe subscription ID (allows manual overrides for testing)
+        if (user && user.stripe_subscription_id) {
           // When subscription is deleted (period ended after cancellation, or immediate cancellation)
           // User has not paid / subscription ended → UNSUBSCRIBED
           const { mapStripeStatusToSubscriptionStatus } = await import("@/lib/subscription-helpers");
@@ -305,10 +317,44 @@ export async function POST(req: Request) {
         break;
       }
 
+      case "customer.subscription.trial_will_end": {
+        const subscription = event.data.object as Stripe.Subscription;
+
+        // Find user by customer ID
+        const user = await prisma.user.findFirst({
+          where: { stripe_customer_id: subscription.customer as string },
+          select: { 
+            id: true,
+            stripe_subscription_id: true,
+          },
+        });
+
+        // Only sync if user has a Stripe subscription ID
+        if (user && user.stripe_subscription_id) {
+          // Trial is ending soon - update trial_ends_at if needed
+          const trialEnd = subscription.trial_end
+            ? new Date(subscription.trial_end * 1000)
+            : null;
+
+          if (trialEnd) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                trial_ends_at: trialEnd,
+              },
+            });
+          }
+        }
+        break;
+      }
+
       // Add more event handlers as needed
       default:
-        // Unhandled event type
-        console.log(`Unhandled event type: ${event.type}`);
+        // Unhandled event type - log for monitoring but don't fail
+        logError("app/api/webhooks/stripe (unhandled event)", new Error(`Unhandled event type: ${event.type}`), {
+          eventId: event.id,
+          eventType: event.type,
+        });
     }
 
     // Mark event as processed

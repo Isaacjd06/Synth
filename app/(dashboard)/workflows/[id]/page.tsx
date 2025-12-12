@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, ChevronDown, ChevronUp, Play, Pencil, Zap, Trash2, Loader2, Clock, CheckCircle2, AlertCircle } from "lucide-react";
-import AppShell from "@/components/app/AppShell";
 import { PageTransition, PageItem } from "@/components/app/PageTransition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,11 +25,31 @@ interface Workflow {
   id: string;
   name: string;
   description: string | null;
+  intent: string | null;
   status: "active" | "inactive";
   created_at: string;
   updated_at: string;
-  trigger: unknown;
+  trigger: { type: string; config: unknown } | null;
   actions: unknown[];
+  steps?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    type: string;
+    metadata: unknown;
+  }>;
+  stats?: {
+    totalRuns: number;
+    avgTime: number;
+    successRate: number;
+    lastRunAt: string | null;
+  };
+  timeline?: Array<{
+    date: string;
+    runs: number;
+    successes: number;
+    failures: number;
+  }>;
 }
 
 interface Execution {
@@ -83,12 +102,30 @@ export default function WorkflowDetailPage() {
           fetch(`/api/workflows/${id}/executions`)
         ]);
         
+        // Check content types before parsing
+        const workflowContentType = workflowRes.headers.get("content-type");
+        const executionsContentType = executionsRes.headers.get("content-type");
+        
         if (!workflowRes.ok) {
           throw new Error("Failed to fetch workflow");
         }
         
+        if (!workflowContentType || !workflowContentType.includes("application/json")) {
+          throw new Error("Unexpected response from server");
+        }
+        
         const workflowData = await workflowRes.json();
-        const executionsData = executionsRes.ok ? await executionsRes.json() : { ok: false, executions: [] };
+        let executionsList: Execution[] = [];
+        
+        if (executionsRes.ok && executionsContentType && executionsContentType.includes("application/json")) {
+          const executionsData = await executionsRes.json();
+          // Handle both response formats
+          if (executionsData.ok && executionsData.executions) {
+            executionsList = executionsData.executions;
+          } else if (Array.isArray(executionsData)) {
+            executionsList = executionsData;
+          }
+        }
         
         if (workflowData.id) {
           setWorkflow({
@@ -96,9 +133,7 @@ export default function WorkflowDetailPage() {
             status: workflowData.active ? "active" : "inactive",
           });
         }
-        if (executionsData.ok && executionsData.executions) {
-          setExecutions(executionsData.executions || []);
-        }
+        setExecutions(executionsList);
       } catch (err) {
         console.error("Error fetching workflow:", err);
         toast.error("Failed to load workflow");
@@ -162,32 +197,52 @@ export default function WorkflowDetailPage() {
       const response = await fetch(`/api/workflows/${id}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input_data: parsedInputData }),
+        body: JSON.stringify({ payload: parsedInputData }),
       });
       const data = await response.json();
       
-      if (data.ok && data.execution) {
+      if (data.ok && data.data) {
         const result = {
-          id: data.execution.id || `exec_${crypto.randomUUID().slice(0, 8)}`,
-          data: data.execution.output_data || { success: true, processed: parsedInputData },
-          finished_at: data.execution.finished_at || new Date().toISOString(),
-          status: data.execution.status || "success",
+          id: data.data.executionId,
+          data: data.data.outputPreview || { success: true },
+          finished_at: data.data.finishedAt || new Date().toISOString(),
+          status: data.data.status || "success",
         };
         setLastExecution(result);
         toast.success("Workflow executed successfully");
-        // Refresh executions list
-        const executionsRes = await fetch(`/api/workflows/${id}/executions`);
+        
+        // Refresh workflow data and executions list
+        const [workflowRes, executionsRes] = await Promise.all([
+          fetch(`/api/workflows/${id}`),
+          fetch(`/api/workflows/${id}/executions`),
+        ]);
+        
+        if (workflowRes.ok) {
+          const workflowData = await workflowRes.json();
+          if (workflowData.id) {
+            setWorkflow({
+              ...workflowData,
+              status: workflowData.active ? "active" : "inactive",
+            });
+          }
+        }
+        
         if (executionsRes.ok) {
           const executionsData = await executionsRes.json();
+          // Handle both response formats
           if (executionsData.ok && executionsData.executions) {
             setExecutions(executionsData.executions || []);
+          } else if (Array.isArray(executionsData)) {
+            setExecutions(executionsData);
           }
         }
       } else {
-        toast.error(data.error || "Failed to run workflow");
+        const errorMessage = data.error || "Failed to run workflow";
+        toast.error(errorMessage);
       }
     } catch (err) {
-      toast.error("Failed to run workflow");
+      const errorMessage = err instanceof Error ? err.message : "Failed to run workflow";
+      toast.error(errorMessage);
     } finally {
       setIsRunning(false);
     }
@@ -235,24 +290,24 @@ export default function WorkflowDetailPage() {
 
   if (loading) {
     return (
-      <AppShell>
-        <div className="px-4 lg:px-6 py-4 lg:py-6 max-w-4xl mx-auto">
+      <PageTransition className="max-w-7xl mx-auto">
+        <div className="space-y-6">
           <div className="animate-pulse space-y-4">
             <div className="h-8 bg-muted/50 rounded w-3/4" />
             <div className="h-32 bg-muted/50 rounded" />
           </div>
         </div>
-      </AppShell>
+      </PageTransition>
     );
   }
 
   if (!workflow) {
     return (
-      <AppShell>
-        <div className="px-4 lg:px-6 py-4 lg:py-6 max-w-4xl mx-auto">
+      <PageTransition className="max-w-7xl mx-auto">
+        <div className="space-y-6">
           <p className="text-muted-foreground">Workflow not found</p>
         </div>
-      </AppShell>
+      </PageTransition>
     );
   }
 
@@ -265,8 +320,8 @@ export default function WorkflowDetailPage() {
     : [];
 
   return (
-    <AppShell>
-      <PageTransition className="px-4 lg:px-6 py-6 space-y-6 max-w-4xl mx-auto">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
         {/* Back Button */}
         <PageItem>
           <Button variant="ghost" size="sm" asChild className="group">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateUser, authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { assertIntegrationAllowed } from "@/lib/plan-enforcement";
 
 // Type definitions
 interface CreateConnectionBody {
@@ -72,6 +73,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "service_name is required" },
         { status: 400 },
+      );
+    }
+
+    // Get user's subscription plan and trial status
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        subscription_plan: true,
+        trial_ends_at: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 },
+      );
+    }
+
+    // Check if user is in trial period
+    const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+    
+    // During trial, treat user as if they have agency plan (all integrations)
+    const plan = isInTrial 
+      ? ("agency" as const) // Trial users get full access to all integrations
+      : ((user.subscription_plan || "free") as "free" | "starter" | "pro" | "agency");
+
+    // Assert that this integration is allowed for the user's plan
+    // During trial, all 40 integrations are allowed
+    try {
+      assertIntegrationAllowed(plan, body.service_name);
+    } catch (error: unknown) {
+      const err = error as Error & { upgradeRequired?: boolean; requiredPlan?: string; currentPlan?: string };
+      return NextResponse.json(
+        {
+          error: err.message || "This integration is not available on your current plan.",
+          upgradeRequired: err.upgradeRequired ?? true,
+          requiredPlan: err.requiredPlan,
+          currentPlan: err.currentPlan,
+        },
+        { status: 403 },
       );
     }
 

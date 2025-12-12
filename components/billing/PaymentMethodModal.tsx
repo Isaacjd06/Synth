@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { synthToast } from "@/lib/synth-toast";
 
 interface PaymentMethodModalProps {
   open: boolean;
@@ -47,14 +47,10 @@ const PaymentMethodModal = ({ open, onClose, currentCard, onSuccess }: PaymentMe
       };
       
       onSuccess?.(newCard);
-      toast.success("Payment Method Updated", {
-        description: "Your payment method has been updated successfully.",
-      });
+      synthToast.success("Payment Method Updated", "Your payment method has been updated successfully.");
       onClose();
     } catch (error) {
-      toast.error("Update Failed", {
-        description: "Failed to update payment method. Please try again.",
-      });
+      synthToast.error("Update Failed", "Failed to update payment method. Please try again.");
     } finally {
       setIsLoading(false);
     }

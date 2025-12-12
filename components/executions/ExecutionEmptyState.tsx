@@ -1,6 +1,7 @@
+"use client";
+import Link from "next/link";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 const ExecutionEmptyState = () => {
   return (
@@ -24,7 +25,3 @@ const ExecutionEmptyState = () => {
 };
 
 export default ExecutionEmptyState;
-
-
-
-

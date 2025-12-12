@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Key, Plus, Copy, Eye, EyeOff, Trash2, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
-import AppShell from "@/components/app/AppShell";
 import AppCard from "@/components/app/AppCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,8 +121,8 @@ export default function ApiKeysPage() {
   };
 
   return (
-    <AppShell>
-      <div className="px-4 lg:px-6 py-4 lg:py-6">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -365,9 +364,9 @@ export default function ApiKeysPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
-      </div>
-    </AppShell>
+        </AlertDialog>
+        </div>
+      </PageTransition>
   );
 }
 

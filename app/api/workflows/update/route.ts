@@ -6,6 +6,7 @@ import { validateWorkflowPlan } from "@/lib/workflow/validator";
 import { validateAppConnections } from "@/lib/workflow/connectionValidator";
 import { setWorkflowActive } from "@/lib/pipedreamClient";
 import { logError } from "@/lib/error-logger";
+import { validateWorkflowIntegrations } from "@/lib/plan-enforcement";
 
 interface WorkflowUpdateRequestBody {
   id: string;
@@ -105,6 +106,47 @@ export async function POST(req: Request) {
             missingApps: connectionValidation.missingApps,
           },
           { status: 400 }
+        );
+      }
+
+      // Get user's subscription plan and trial status for integration validation
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+          subscription_plan: true,
+          trial_ends_at: true,
+        },
+      });
+
+      if (!user) {
+        return NextResponse.json(
+          { error: "User not found" },
+          { status: 404 }
+        );
+      }
+
+      // Check if user is in trial period
+      const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+      
+      // During trial, treat user as if they have agency plan (all integrations)
+      const userPlan = isInTrial 
+        ? ("agency" as const) // Trial users get full access to all integrations
+        : ((user.subscription_plan || "free") as "free" | "starter" | "pro" | "agency");
+
+      // Validate that all integrations in the updated workflow are allowed for the user's plan
+      const integrationValidation = validateWorkflowIntegrations(userPlan, {
+        trigger: mergedPlan.trigger,
+        actions: Array.isArray(mergedPlan.actions) ? mergedPlan.actions : [],
+      });
+
+      if (!integrationValidation.valid) {
+        return NextResponse.json(
+          {
+            error: integrationValidation.reason || "Workflow contains integrations not available on your plan.",
+            restrictedIntegrations: integrationValidation.restrictedIntegrations,
+            upgradeRequired: true,
+          },
+          { status: 403 }
         );
       }
     }

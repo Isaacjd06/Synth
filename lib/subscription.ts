@@ -9,9 +9,11 @@
 
 import { prisma } from "@/lib/prisma";
 import { SubscriptionStatus } from "@prisma/client";
+import type { NextResponse } from "next/server";
 
 // Re-export types from client-safe version for server-side compatibility
 export type { SubscriptionPlan, SubscriptionUsage, SubscriptionState } from "./subscription-client";
+import type { SubscriptionPlan } from "./subscription-client";
 
 // Re-export utility functions that don't use Prisma
 export { mapPlanToSubscriptionPlan, getLogRetentionDays, getPlanDisplayName, getPlanBadgeColors } from "./subscription-client";
@@ -123,6 +125,112 @@ export async function getSubscriptionStatus(
   }
 
   return user.subscriptionStatus;
+}
+
+/**
+ * Get effective subscription plan for a user
+ * 
+ * This function returns the plan that should be used for entitlement checks.
+ * During trial periods, users get "agency" plan access (full features).
+ * After trial, returns their actual subscription plan.
+ * 
+ * @param userId - User ID
+ * @returns Effective subscription plan (free, starter, pro, or agency)
+ */
+export async function getEffectiveSubscriptionPlan(
+  userId: string
+): Promise<SubscriptionPlan> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      subscription_plan: true,
+      trial_ends_at: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  // During trial, treat user as if they have agency plan (all integrations)
+  const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+  
+  if (isInTrial) {
+    return "agency";
+  }
+
+  // Return actual plan, defaulting to "free" if null
+  return (user.subscription_plan || "free") as SubscriptionPlan;
+}
+
+/**
+ * Get current user with subscription information
+ * 
+ * @param userId - User ID
+ * @returns User with subscription plan and status
+ */
+export async function getCurrentUserWithSubscription(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      stripe_customer_id: true,
+      stripe_subscription_id: true,
+      subscription_plan: true,
+      pending_subscription_plan: true,
+      subscriptionStatus: true,
+      subscription_status: true,
+      subscription_renewal_at: true,
+      trial_ends_at: true,
+      has_active_payment_method: true,
+      stripe_payment_method_id: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    stripe_customer_id: user.stripe_customer_id,
+    stripe_subscription_id: user.stripe_subscription_id,
+    subscription_plan: (user.subscription_plan || "free") as SubscriptionPlan,
+    pending_subscription_plan: user.pending_subscription_plan,
+    subscriptionStatus: user.subscriptionStatus,
+    subscription_status: user.subscription_status,
+    subscription_renewal_at: user.subscription_renewal_at,
+    trial_ends_at: user.trial_ends_at,
+    has_active_payment_method: user.has_active_payment_method,
+    stripe_payment_method_id: user.stripe_payment_method_id,
+  };
+}
+
+/**
+ * Require subscription level for a user
+ * Returns error response if user doesn't have required plan
+ * 
+ * @param userId - User ID
+ * @param requiredPlan - Minimum required plan level
+ * @returns Error response if plan insufficient, null if allowed
+ */
+export async function requireSubscriptionLevel(
+  userId: string,
+  requiredPlan: "starter" | "pro" | "agency"
+): Promise<NextResponse | null> {
+  const { requirePlan } = await import("./api-response");
+  const effectivePlan = await getEffectiveSubscriptionPlan(userId);
+  
+  const planCheck = requirePlan(effectivePlan, requiredPlan);
+  if (planCheck) {
+    return planCheck;
+  }
+  
+  return null;
 }
 
 /**

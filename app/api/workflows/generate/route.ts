@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { createWorkflow, PipedreamError } from "@/lib/pipedream";
 import { z } from "zod";
+import { validateWorkflowIntegrations, getAllowedIntegrations } from "@/lib/plan-enforcement";
+import { extractIntegrationIdsFromWorkflow } from "@/lib/integrations";
 
 const GenerateRequestSchema = z.object({
   intent: z.string().min(1, "Intent is required"),
@@ -48,7 +50,33 @@ export async function POST(req: Request) {
 
     const { intent } = validationResult.data;
 
+    // Get user's subscription plan and trial status to filter allowed integrations for AI generation
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        subscription_plan: true,
+        trial_ends_at: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "User not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if user is in trial period
+    const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+    
+    // During trial, treat user as if they have agency plan (all integrations)
+    const plan = isInTrial 
+      ? ("agency" as const) // Trial users get full access to all integrations
+      : ((user.subscription_plan || "free") as "free" | "starter" | "pro" | "agency");
+    const allowedIntegrations = getAllowedIntegrations(plan);
+
     // 4. Generate workflow blueprint using AI (with knowledge base context)
+    // Note: The AI should be aware of plan restrictions, but we validate after generation
     const aiResult = await generateWorkflowBlueprint(intent, userId);
 
     if (!aiResult.ok) {
@@ -59,6 +87,42 @@ export async function POST(req: Request) {
     }
 
     const blueprint = aiResult.blueprint;
+
+    // Validate that AI-generated workflow only uses allowed integrations
+    const integrationValidation = validateWorkflowIntegrations(plan, {
+      trigger: blueprint.trigger,
+      actions: blueprint.actions || [],
+    });
+
+    if (!integrationValidation.valid) {
+      // If AI generated a workflow with restricted integrations, filter them out
+      // Extract integration IDs from the blueprint
+      const integrationIds = extractIntegrationIdsFromWorkflow({
+        trigger: blueprint.trigger,
+        actions: blueprint.actions || [],
+      });
+
+      // Remove restricted integrations from the blueprint
+      // This ensures AI-generated workflows are automatically downgraded to user's plan
+      const restrictedIds = integrationValidation.restrictedIntegrations || [];
+      
+      if (restrictedIds.length > 0) {
+        // Log that we're filtering out restricted integrations
+        console.warn(`AI generated workflow with restricted integrations for ${plan} plan: ${restrictedIds.join(", ")}`);
+        
+        // For now, we'll reject the workflow and ask AI to regenerate with constraints
+        // In the future, we could implement automatic filtering
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Generated workflow contains integrations not available on your plan. Please try a different workflow or upgrade your plan.",
+            restrictedIntegrations: restrictedIds,
+            upgradeRequired: true,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // 5. Store workflow blueprint in database (mark as AI-generated)
     const workflow = await prisma.workflows.create({

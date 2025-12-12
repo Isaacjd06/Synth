@@ -1,71 +1,60 @@
-import { NextResponse } from "next/server";
-import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
-import { runWorkflow, PipedreamError } from "@/lib/pipedream";
-import { logUsage } from "@/lib/usage";
-import { checkFeature } from "@/lib/feature-gate";
-import { logAudit } from "@/lib/audit";
-import { Events } from "@/lib/events";
-import { logError } from "@/lib/error-logger";
-
 /**
  * POST /api/workflows/[id]/run
  *
- * Runs a workflow in Pipedream and creates an execution record.
+ * Runs a workflow using the execution engine and creates an execution record.
  *
  * Requirements:
  * - User must be authenticated
+ * - User must have STARTER+ plan (FREE cannot run workflows)
  * - Workflow must exist and have a Pipedream workflow ID
+ * - Workflow must be active
  *
  * Returns the execution result.
  */
+
+import { NextResponse } from "next/server";
+import { authenticateUser } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
+import { success, error } from "@/lib/api-response";
+import { requireSubscriptionLevel } from "@/lib/subscription";
+import { checkWorkflowRunLimit } from "@/lib/workflow-limits";
+import { getEffectiveSubscriptionPlan, getCurrentUserWithSubscription } from "@/lib/subscription";
+import { runWorkflow as executeWorkflow } from "@/lib/execution-engine";
+import { startExecutionLog, completeExecutionLog, updateExecutionWithError } from "@/lib/execution-logger";
+import { logError } from "@/lib/error-logger";
+import type { RunWorkflowResponse } from "@/types/api";
+
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. Authenticate user and check subscription
-    const authResult = await authenticateAndCheckSubscription();
+    // 1. Authenticate user
+    const authResult = await authenticateUser();
     if (authResult instanceof NextResponse) {
-      return authResult; // Returns 401 or 403
+      return authResult; // Returns 401
     }
     const { userId } = authResult;
 
-    // 1a. Check if workflow execution is allowed for user's plan
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { plan: true },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { ok: false, error: "User not found" },
-        { status: 404 },
-      );
+    // 2. Check subscription level - FREE cannot run workflows
+    const planCheck = await requireSubscriptionLevel(userId, "starter");
+    if (planCheck) {
+      return planCheck; // Returns 403 with error message
     }
 
-    if (!checkFeature(user, "allowWorkflowExecution")) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Workflow execution is not available on your current plan. Please upgrade to Pro to execute workflows.",
-        },
-        { status: 403 },
-      );
+    // 3. Check workflow run limit
+    const limitError = await checkWorkflowRunLimit(userId);
+    if (limitError) {
+      return error(limitError, { status: 403, code: "LIMIT_EXCEEDED" });
     }
 
+    // 4. Get workflow ID from params
     const { id: workflowId } = await params;
-
     if (!workflowId) {
-      return NextResponse.json(
-        { ok: false, error: "Workflow ID is required" },
-        { status: 400 },
-      );
+      return error("Workflow ID is required", { status: 400 });
     }
 
-    // 3. Fetch workflow by ID and verify ownership
+    // 5. Fetch workflow by ID and verify ownership
     const workflow = await prisma.workflows.findFirst({
       where: {
         id: workflowId,
@@ -74,106 +63,106 @@ export async function POST(
     });
 
     if (!workflow) {
-      return NextResponse.json(
-        { ok: false, error: "Workflow not found" },
-        { status: 404 },
+      return error("Workflow not found", { status: 404 });
+    }
+
+    // 6. Check if workflow has a Pipedream workflow ID
+    if (!workflow.pipedream_workflow_id) {
+      return error(
+        "Workflow is not activated. Please activate the workflow first.",
+        { status: 400, code: "WORKFLOW_NOT_ACTIVATED" }
       );
     }
 
-    // 4. Check if workflow has a workflow engine ID
-    if (!workflow.n8n_workflow_id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Workflow is not activated. Please activate the workflow first.",
-        },
-        { status: 400 },
+    // 7. Check if workflow is active
+    if (!workflow.active) {
+      return error(
+        "Workflow is not active. Please activate the workflow first.",
+        { status: 400, code: "WORKFLOW_INACTIVE" }
       );
     }
 
-    // 5. Call runWorkflow from Pipedream
-    let pipedreamExecution;
+    // 8. Parse input payload from request body
+    let inputPayload: Record<string, unknown> = {};
     try {
-      pipedreamExecution = await runWorkflow(workflow.n8n_workflow_id);
-    } catch (error) {
-      if (error instanceof PipedreamError) {
-        logError("app/api/workflows/[id]/run (Pipedream)", error, {
-          workflow_id: workflow.id,
-          pipedream_workflow_id: workflow.n8n_workflow_id,
-        });
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Failed to run workflow",
-            workflow_error: error.message,
-          },
-          { status: 500 },
-        );
-      }
-      throw error;
+      const body = await req.json();
+      inputPayload = body.payload || body.input_data || body || {};
+    } catch {
+      // If no body or invalid JSON, use empty payload
+      inputPayload = {};
     }
 
-    // 6. Create execution record in the executions table
-    const execution = await prisma.executions.create({
-      data: {
-        workflow_id: workflow.id,
-        user_id: userId,
-        input_data: pipedreamExecution.input_data ? (pipedreamExecution.input_data as Prisma.InputJsonValue) : undefined,
-        output_data: pipedreamExecution.output_data ? (pipedreamExecution.output_data as Prisma.InputJsonValue) : undefined,
-        status: pipedreamExecution.status || "unknown",
-        pipedream_execution_id: pipedreamExecution.id,
-        created_at: new Date(pipedreamExecution.started_at),
-        finished_at: pipedreamExecution.finished_at
-          ? new Date(pipedreamExecution.finished_at)
-          : undefined,
-      },
+    // 9. Get user subscription info for execution context
+    const user = await getCurrentUserWithSubscription(userId);
+    const effectivePlan = await getEffectiveSubscriptionPlan(userId);
+
+    // 10. Start execution log
+    const executionId = await startExecutionLog({
+      workflowId: workflow.id,
+      userId,
+      input: inputPayload,
     });
 
-    // 7. Log usage
-    await logUsage(userId, "workflow_run");
-
-    // 7a. Log audit event
-    await logAudit("workflow.run", userId, {
-      workflow_id: workflow.id,
-      workflow_name: workflow.name,
-      execution_id: execution.id,
-      status: execution.status,
-    });
-
-    // 7b. Emit event
-    Events.emit("workflow:executed", {
-      workflow_id: workflow.id,
-      user_id: userId,
-      execution_id: execution.id,
-      status: execution.status,
-    });
-
-    // 8. Return execution result
-    return NextResponse.json(
-      {
-        ok: true,
-        execution: {
-          id: execution.id,
-          workflow_id: execution.workflow_id,
-          user_id: execution.user_id,
-          input_data: execution.input_data,
-          output_data: execution.output_data,
-          status: execution.status,
-          created_at: execution.created_at,
-          finished_at: execution.finished_at,
+    try {
+      // 11. Run workflow using execution engine
+      const result = await executeWorkflow({
+        workflow: {
+          id: workflow.id,
+          name: workflow.name,
+          pipedream_workflow_id: workflow.pipedream_workflow_id,
+          active: workflow.active,
+          trigger: workflow.trigger,
+          actions: workflow.actions,
         },
-      },
-      { status: 201 },
-    );
-  } catch (error: unknown) {
-    logError("app/api/workflows/[id]/run", error);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Internal server error",
-      },
-      { status: 500 },
+        input: { payload: inputPayload },
+        user: {
+          id: user.id,
+          subscription_plan: effectivePlan,
+        },
+      });
+
+      // 12. Complete execution log
+      await completeExecutionLog({
+        executionId,
+        result,
+      });
+
+      // 13. Return success response
+      const response: RunWorkflowResponse = {
+        executionId,
+        status: result.status,
+        durationMs: result.durationMs,
+        startedAt: result.startedAt.toISOString(),
+        finishedAt: result.finishedAt?.toISOString() || null,
+        outputPreview: result.output
+          ? (Object.keys(result.output).length > 0
+              ? { keys: Object.keys(result.output).slice(0, 5) }
+              : null)
+          : null,
+      };
+
+      return success(response);
+    } catch (execError) {
+      // Handle execution errors
+      const errorMessage =
+        execError instanceof Error ? execError.message : "Failed to execute workflow";
+      
+      await updateExecutionWithError({
+        executionId,
+        error: {
+          message: errorMessage,
+          stack: execError instanceof Error ? execError.stack || null : null,
+          cause: null,
+        },
+      });
+
+      return error(errorMessage, { status: 500, code: "EXECUTION_FAILED" });
+    }
+  } catch (err) {
+    logError("app/api/workflows/[id]/run", err);
+    return error(
+      "Failed to run workflow. Please try again or contact support if the issue persists.",
+      { status: 500, code: "EXECUTION_FAILED" }
     );
   }
 }

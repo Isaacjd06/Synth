@@ -136,12 +136,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (dbUser) {
                 console.log("[AUTH] signIn: User found in database:", dbUser.id);
+              // Check if user was created in the last 30 seconds (more reliable than 10 seconds)
               const isNew =
                 dbUser.created_at &&
-                  new Date().getTime() - new Date(dbUser.created_at).getTime() < 10000; // 10 seconds
+                  new Date().getTime() - new Date(dbUser.created_at).getTime() < 30000; // 30 seconds
 
                 if (isNew) {
-                  console.log("[AUTH] signIn: New user detected, setting up profile...");
+                  console.log("[AUTH] signIn: New user detected, setting up 3-day trial and profile...");
                 }
 
                 // Save Google profile data

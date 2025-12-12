@@ -1,3 +1,4 @@
+"use client";
 import { 
   Webhook, 
   Clock, 
@@ -55,6 +56,3 @@ const WorkflowTriggerIcon = ({ trigger, showLabel = false, className }: Workflow
 };
 
 export default WorkflowTriggerIcon;
-
-
-

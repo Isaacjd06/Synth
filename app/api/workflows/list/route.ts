@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { authenticateUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { success, error } from "@/lib/api-response";
+import type { WorkflowListItem } from "@/types/api";
 
 /**
  * GET /api/workflows/list
@@ -19,21 +21,49 @@ export async function GET() {
     const workflows = await prisma.workflows.findMany({
       where: { user_id: userId },
       orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        active: true,
+        created_at: true,
+        updated_at: true,
+      },
     });
 
-    // Return workflows with readOnly flag if user doesn't have full access
-    return NextResponse.json(
-      workflows.map((w) => ({
-        ...w,
-        readOnly: !authResult.hasValidSubscription,
-      })),
-      { status: 200 }
+    // Get execution counts and last run for each workflow
+    const workflowsWithStats: WorkflowListItem[] = await Promise.all(
+      workflows.map(async (workflow) => {
+        // Get last execution
+        const lastExecution = await prisma.executions.findFirst({
+          where: { workflow_id: workflow.id },
+          orderBy: { created_at: "desc" },
+          select: { created_at: true },
+        });
+
+        // Count total executions
+        const runCount = await prisma.executions.count({
+          where: { workflow_id: workflow.id },
+        });
+
+        return {
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description,
+          active: workflow.active,
+          lastRun: lastExecution?.created_at.toISOString() || null,
+          runCount,
+          readOnly: !authResult.hasValidSubscription,
+        };
+      })
     );
 
-  } catch (error: unknown) {
-    console.error("WORKFLOW LIST ERROR:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+    // Return array directly to match UI expectations (existing route format)
+    return NextResponse.json(workflowsWithStats, { status: 200 });
+  } catch (err) {
+    console.error("WORKFLOW LIST ERROR:", err);
+    return error(
+      err instanceof Error ? err.message : "Internal server error",
       { status: 500 }
     );
   }

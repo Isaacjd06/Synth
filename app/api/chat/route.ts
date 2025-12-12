@@ -110,7 +110,12 @@ export async function POST(req: Request) {
       conversation_id: conversationId,
     });
 
-    // 6. Retrieve relevant memories for context
+    // 6. Load comprehensive context for AI
+    const {
+      getRecentChatMessages,
+    } = await import("@/lib/memory-service");
+
+    // 6a. Retrieve relevant memories for context
     const relevantMemories = await getRelevantMemories(userId, undefined, 5);
     const memoryContext = formatMemoriesForContext(relevantMemories);
 
@@ -121,11 +126,21 @@ export async function POST(req: Request) {
       });
     }
 
-    // 6a. Fetch knowledge base context (user-specific + hardcoded) - ALWAYS REQUIRED
+    // 6b. Get recent chat messages for conversation context
+    const recentMessages = await getRecentChatMessages(userId, 10);
+    const chatHistoryContext = recentMessages
+      .map((msg) => `${msg.role === "user" ? "User" : "Synth"}: ${msg.content}`)
+      .join("\n");
+
+    // 6c. Fetch knowledge base context (user-specific + hardcoded) - ALWAYS REQUIRED
     const { fetchKnowledgeContext, formatKnowledgeContextForPrompt } = await import("@/lib/knowledge-context");
     const knowledgeContextData = await fetchKnowledgeContext(userId);
     // Always include hardcoded knowledge - this is Synth's PRIMARY source of expertise
     const knowledgeContext = formatKnowledgeContextForPrompt(knowledgeContextData, true);
+
+    // 6d. Fetch workflow and execution context
+    const workflowContext = await buildWorkflowContext(userId);
+    const executionContext = await buildExecutionContext(userId);
 
     // 7. Detect intent using AI
     const intentResult = await detectChatIntent(message);
@@ -258,18 +273,22 @@ export async function POST(req: Request) {
           "I understand you want to run a workflow, but I couldn't find a workflow ID in your message. Please provide the workflow ID.";
       }
     } else if (intent === "update_workflow") {
-      // TODO: Implement update_workflow action
       assistantContent =
-        "Workflow updates are not yet implemented. This feature is coming soon.";
+        "I can help you create or run workflows, but workflow updates need to be done manually in the Workflows page. Would you like me to help you create a new workflow instead?";
     } else {
       // general_response
       actionTaken = "general_response";
 
-      // Generate a general AI response with memory context and knowledge base
+      // Generate a general AI response with comprehensive context
       const generalResponseResult = await generateGeneralResponse(
         message,
-        memoryContext,
-        knowledgeContext
+        {
+          memoryContext,
+          knowledgeContext,
+          chatHistory: chatHistoryContext,
+          workflowContext,
+          executionContext,
+        }
       );
 
       if (generalResponseResult.ok && generalResponseResult.response) {
@@ -361,16 +380,117 @@ export async function POST(req: Request) {
 }
 
 /**
+ * Build workflow context summary for AI
+ */
+async function buildWorkflowContext(userId: string): Promise<string> {
+  const workflows = await prisma.workflows.findMany({
+    where: { user_id: userId },
+    select: {
+      id: true,
+      name: true,
+      active: true,
+    },
+  });
+
+  const activeWorkflows = workflows.filter((w) => w.active);
+  const inactiveWorkflows = workflows.filter((w) => !w.active);
+
+  // Get active skills count (skills are stored in workflows or a separate table)
+  // For now, we'll skip skills as they may not be in a dedicated table
+  // Note: Skills context can be added when skills table structure is finalized
+
+  const contextParts: string[] = [];
+  contextParts.push(`## WORKFLOW SUMMARY`);
+  contextParts.push(`Total workflows: ${workflows.length}`);
+  contextParts.push(`Active workflows: ${activeWorkflows.length}`);
+  contextParts.push(`Inactive workflows: ${inactiveWorkflows.length}`);
+  
+  if (activeWorkflows.length > 0) {
+    contextParts.push(`\nActive workflow names:`);
+    activeWorkflows.slice(0, 10).forEach((w) => {
+      contextParts.push(`- ${w.name} (ID: ${w.id})`);
+    });
+  }
+
+      // Note: Skills context can be added when available
+
+  return contextParts.join("\n");
+}
+
+/**
+ * Build execution context summary for AI
+ */
+async function buildExecutionContext(userId: string): Promise<string> {
+  const now = new Date();
+  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const [totalRuns24h, errorCount24h, recentExecutions] = await Promise.all([
+    prisma.executions.count({
+      where: {
+        user_id: userId,
+        created_at: { gte: last24h },
+      },
+    }),
+    prisma.executions.count({
+      where: {
+        user_id: userId,
+        status: { in: ["error", "failure"] },
+        created_at: { gte: last24h },
+      },
+    }),
+    prisma.executions.findMany({
+      where: {
+        user_id: userId,
+        created_at: { gte: last24h },
+      },
+      orderBy: { created_at: "desc" },
+      take: 5,
+      select: {
+        status: true,
+        workflow_id: true,
+        workflows: {
+          select: { name: true },
+        },
+      },
+    }),
+  ]);
+
+  const successRate = totalRuns24h > 0 
+    ? ((totalRuns24h - errorCount24h) / totalRuns24h * 100).toFixed(1)
+    : "N/A";
+
+  const contextParts: string[] = [];
+  contextParts.push(`## EXECUTION HEALTH (Last 24h)`);
+  contextParts.push(`Total runs: ${totalRuns24h}`);
+  contextParts.push(`Errors: ${errorCount24h}`);
+  contextParts.push(`Success rate: ${successRate}%`);
+
+  if (recentExecutions.length > 0) {
+    contextParts.push(`\nRecent executions:`);
+    recentExecutions.forEach((exec) => {
+      const status = exec.status === "success" ? "✓" : exec.status === "error" ? "✗" : "○";
+      contextParts.push(`${status} ${exec.workflows?.name || "Unknown workflow"} - ${exec.status}`);
+    });
+  }
+
+  return contextParts.join("\n");
+}
+
+/**
  * Generate a general AI response for chat
  * 
  * @param message - User's message
- * @param memoryContext - Optional context from memory system
- * @param knowledgeContext - Optional context from knowledge base (user-specific + hardcoded)
+ * @param context - Comprehensive context object
  */
 async function generateGeneralResponse(
   message: string,
-  memoryContext?: string,
-  knowledgeContext?: string,
+  context: {
+    memoryContext?: string;
+    knowledgeContext?: string;
+    chatHistory?: string;
+    workflowContext?: string;
+    executionContext?: string;
+  },
 ): Promise<{ ok: boolean; response?: string; error?: string }> {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
   const ANTHROPIC_BACKEND_API_KEY = process.env.ANTHROPIC_BACKEND_API_KEY?.trim();
@@ -402,6 +522,11 @@ async function generateGeneralResponse(
 
 ${BRANDING_INSTRUCTIONS}
 
+You are Synth, an AI automation brain for this user's business.
+You must always think in terms of workflows, skills, and automations.
+You know the user's business context (from memory).
+You know the current state of workflows and executions.
+
 Your capabilities include:
 - Providing strategic business advice and recommendations HEAVILY RELYING on your knowledge base
 - Analyzing workflow performance, statistics, and execution results using knowledge base frameworks
@@ -410,9 +535,15 @@ Your capabilities include:
 - Answering questions about business automation, strategy, and operations using knowledge base expertise
 
 ## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE
-${knowledgeContext ? knowledgeContext : "Loading knowledge base..."}
+${context.knowledgeContext ? context.knowledgeContext : "Loading knowledge base..."}
 
-${memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}\n\n` : ""}
+${context.memoryContext ? `\n\n## USER MEMORY CONTEXT\n${context.memoryContext}\n\n` : ""}
+
+${context.workflowContext ? `\n\n${context.workflowContext}\n\n` : ""}
+
+${context.executionContext ? `\n\n${context.executionContext}\n\n` : ""}
+
+${context.chatHistory ? `\n\n## RECENT CONVERSATION HISTORY\n${context.chatHistory}\n\n` : ""}
 
 CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You MUST:
 - Heavily rely on knowledge base frameworks, principles, and methodologies when providing advice
@@ -420,8 +551,10 @@ CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You 
 - Apply knowledge base best practices to all strategic recommendations
 - Ground all business analysis in knowledge base principles
 - Use knowledge base terminology and frameworks consistently
+- Use the workflow and execution context to provide specific, actionable advice
+- Reference specific workflows and their performance when relevant
 
-Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context.`,
+Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context, workflows, and execution history.`,
               },
               {
                 role: "user",
@@ -473,6 +606,11 @@ Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes
 
 ${BRANDING_INSTRUCTIONS}
 
+You are Synth, an AI automation brain for this user's business.
+You must always think in terms of workflows, skills, and automations.
+You know the user's business context (from memory).
+You know the current state of workflows and executions.
+
 Your capabilities include:
 - Providing strategic business advice and recommendations HEAVILY RELYING on your knowledge base
 - Analyzing workflow performance, statistics, and execution results using knowledge base frameworks
@@ -481,9 +619,15 @@ Your capabilities include:
 - Answering questions about business automation, strategy, and operations using knowledge base expertise
 
 ## KNOWLEDGE BASE - YOUR PRIMARY SOURCE OF EXPERTISE
-${knowledgeContext ? knowledgeContext : "Loading knowledge base..."}
+${context.knowledgeContext ? context.knowledgeContext : "Loading knowledge base..."}
 
-${memoryContext ? `\n\n## MEMORY CONTEXT\n${memoryContext}\n\n` : ""}
+${context.memoryContext ? `\n\n## USER MEMORY CONTEXT\n${context.memoryContext}\n\n` : ""}
+
+${context.workflowContext ? `\n\n${context.workflowContext}\n\n` : ""}
+
+${context.executionContext ? `\n\n${context.executionContext}\n\n` : ""}
+
+${context.chatHistory ? `\n\n## RECENT CONVERSATION HISTORY\n${context.chatHistory}\n\n` : ""}
 
 CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You MUST:
 - Heavily rely on knowledge base frameworks, principles, and methodologies when providing advice
@@ -491,8 +635,10 @@ CRITICAL: Your knowledge base is your PRIMARY SOURCE of business expertise. You 
 - Apply knowledge base best practices to all strategic recommendations
 - Ground all business analysis in knowledge base principles
 - Use knowledge base terminology and frameworks consistently
+- Use the workflow and execution context to provide specific, actionable advice
+- Reference specific workflows and their performance when relevant
 
-Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context.`,
+Always speak as Synth itself. You ARE Synth's intelligence. Your expertise comes from your comprehensive knowledge base combined with the user's specific business context, workflows, and execution history.`,
           messages: [
             {
               role: "user",

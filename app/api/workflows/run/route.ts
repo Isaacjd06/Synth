@@ -4,11 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { runWorkflow } from "@/lib/pipedream/runWorkflow";
 import { logUsage } from "@/lib/usage";
-import { checkFeature } from "@/lib/feature-gate";
+import { checkExecutionLimit } from "@/lib/feature-gate";
 import { logAudit } from "@/lib/audit";
 import { Events } from "@/lib/events";
 import { logError } from "@/lib/error-logger";
 import { createRateLimiter, rateLimitOrThrow } from "@/lib/rate-limit";
+import { validateWorkflowIntegrations } from "@/lib/plan-enforcement";
 
 const workflowRunLimiter = createRateLimiter("workflow-run", 10, 60);
 
@@ -49,7 +50,10 @@ export async function POST(request: Request) {
     // Check if workflow execution is allowed for user's plan
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { plan: true },
+      select: { 
+        subscription_plan: true,
+        trial_ends_at: true,
+      },
     });
 
     if (!user) {
@@ -59,15 +63,42 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!checkFeature(user, "allowWorkflowExecution")) {
+    // Check if user is in trial period
+    const isInTrial = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+    
+    // During trial, treat user as if they have agency plan (all integrations)
+    const plan = isInTrial 
+      ? ("agency" as const) // Trial users get full access to all integrations
+      : ((user.subscription_plan || "free") as "free" | "starter" | "pro" | "agency");
+
+    // Free plan users cannot execute workflows - view-only access
+    if (plan === "free") {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Workflow execution is not available on your current plan. Please upgrade to Pro to execute workflows.",
+          error: "Free plan is view-only. Upgrade to execute workflows.",
+          upgradeRequired: true,
         },
         { status: 403, headers: { "Access-Control-Allow-Origin": "*" } },
       );
+    }
+
+    // Trial users and agency plan: unlimited executions
+    // Other plans: check monthly execution limit
+    if (!isInTrial && plan !== "agency") {
+      const { checkExecutionLimit } = await import("@/lib/feature-gate");
+      const executionLimitCheck = await checkExecutionLimit(userId);
+      
+      if (!executionLimitCheck.allowed) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: executionLimitCheck.reason || "Monthly execution limit reached. Please upgrade your plan.",
+            upgradeRequired: true,
+          },
+          { status: 403, headers: { "Access-Control-Allow-Origin": "*" } },
+        );
+      }
     }
 
     const { id, inputData } = await request.json();
@@ -91,6 +122,25 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, error: "Workflow not found" },
         { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
+
+    // Validate that all integrations in the workflow are allowed for the user's plan
+    // This prevents execution of workflows with restricted integrations
+    const integrationValidation = validateWorkflowIntegrations(plan, {
+      trigger: workflow.trigger,
+      actions: Array.isArray(workflow.actions) ? workflow.actions : [],
+    });
+
+    if (!integrationValidation.valid) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: integrationValidation.reason || "Workflow contains integrations not available on your plan.",
+          restrictedIntegrations: integrationValidation.restrictedIntegrations,
+          upgradeRequired: true,
+        },
+        { status: 403, headers: { "Access-Control-Allow-Origin": "*" } },
       );
     }
 

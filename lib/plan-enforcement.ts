@@ -1,356 +1,366 @@
 /**
- * Plan Enforcement System
+ * Plan Enforcement Utilities
  * 
- * Enforces subscription plan limits and restrictions throughout the application.
+ * Centralized logic for enforcing subscription plan limits and restrictions.
+ * This is the single source of truth for plan-based access control.
+ * 
+ * Uses the integrations module for integration access control.
  */
 
-import { prisma } from "@/lib/prisma";
-import { getPlanConfig, getUserPlanLimits, type PlanName } from "@/lib/plans";
-import { hasFullAccess } from "@/lib/access-control";
+import { SubscriptionPlan } from "@prisma/client";
+import {
+  canAccessIntegration,
+  getIntegrationIdsForPlan,
+  getIntegrationPlanTier,
+  resolveIntegrationId,
+  extractIntegrationIdsFromWorkflow,
+  type IntegrationMetadata,
+} from "@/lib/integrations";
 
-export interface EnforcementResult {
-  allowed: boolean;
-  reason?: string;
-  currentValue?: number;
-  limit?: number;
-  upgradeRequired?: PlanName;
+export type SubscriptionPlanType = SubscriptionPlan;
+
+/**
+ * Plan capabilities interface
+ */
+export interface PlanCapabilities {
+  plan: SubscriptionPlan;
+  maxWorkflows: number | null; // null = unlimited
+  maxMonthlyExecutions: number | null; // null = unlimited
+  allowedIntegrations: readonly string[];
+  canConnectExternalApps: boolean;
+  canUseAdvancedFeatures: boolean;
+}
+
+/**
+ * Get all capabilities for a given plan
+ */
+export function getUserPlanCapabilities(plan: SubscriptionPlan | string | null | undefined): PlanCapabilities {
+  const normalizedPlan = normalizePlan(plan);
+  
+  switch (normalizedPlan) {
+    case "free":
+      return {
+        plan: "free",
+        maxWorkflows: 0, // Free plan is view-only, cannot create workflows
+        maxMonthlyExecutions: 0, // Free plan is view-only, cannot execute workflows
+        allowedIntegrations: [], // Free plan cannot connect any integrations
+        canConnectExternalApps: false,
+        canUseAdvancedFeatures: false,
+      };
+    
+    case "starter":
+      return {
+        plan: "starter",
+        maxWorkflows: 5,
+        maxMonthlyExecutions: 1000,
+        allowedIntegrations: getIntegrationIdsForPlan("starter"),
+        canConnectExternalApps: true,
+        canUseAdvancedFeatures: false,
+      };
+    
+    case "pro":
+      return {
+        plan: "pro",
+        maxWorkflows: 25,
+        maxMonthlyExecutions: 10000,
+        allowedIntegrations: getIntegrationIdsForPlan("pro"),
+        canConnectExternalApps: true,
+        canUseAdvancedFeatures: true,
+      };
+    
+    case "agency":
+      return {
+        plan: "agency",
+        maxWorkflows: null, // unlimited
+        maxMonthlyExecutions: null, // unlimited
+        allowedIntegrations: getIntegrationIdsForPlan("agency"),
+        canConnectExternalApps: true,
+        canUseAdvancedFeatures: true,
+      };
+    
+    default:
+      // Default to free plan
+      return getUserPlanCapabilities("free");
+  }
+}
+
+/**
+ * Normalize plan string to SubscriptionPlan type
+ */
+function normalizePlan(plan: SubscriptionPlan | string | null | undefined): SubscriptionPlan {
+  if (!plan) return "free";
+  
+  const normalized = plan.toLowerCase().trim();
+  
+  if (normalized === "free" || normalized === "none" || normalized === "inactive") return "free";
+  if (normalized === "starter") return "starter";
+  if (normalized === "pro" || normalized === "growth") return "pro";
+  if (normalized === "agency" || normalized === "scale" || normalized === "enterprise") return "agency";
+  
+  return "free";
+}
+
+/**
+ * Check if a specific integration/service is allowed for a plan
+ * 
+ * @param plan - User's subscription plan
+ * @param serviceName - Integration service name (will be normalized)
+ * @returns true if the integration is allowed for the plan
+ */
+export function isIntegrationAllowed(
+  plan: SubscriptionPlan | string | null | undefined,
+  serviceName: string
+): boolean {
+  const normalizedPlan = normalizePlan(plan);
+  
+  // Free plan: no external integrations allowed
+  if (normalizedPlan === "free") {
+    return false;
+  }
+  
+  return canAccessIntegration(normalizedPlan, serviceName);
+}
+
+/**
+ * Assert that a user's plan can access a specific integration
+ * Throws an error if access is denied
+ * 
+ * STRICT: Only allows integrations from our defined list of 40.
+ * Rejects any integration not in our list.
+ * 
+ * @param plan - User's subscription plan
+ * @param serviceName - Integration service name
+ * @throws Error if integration is not allowed or not in our list
+ */
+export function assertIntegrationAllowed(
+  plan: SubscriptionPlan | string | null | undefined,
+  serviceName: string
+): void {
+  // First check if the integration exists in our list (STRICT validation)
+  const resolvedId = resolveIntegrationId(serviceName);
+  if (!resolvedId) {
+    const error = new Error("This integration is not available. Only the 40 supported integrations can be connected.");
+    (error as any).code = "INTEGRATION_NOT_FOUND";
+    (error as any).upgradeRequired = false;
+    throw error;
+  }
+  
+  // Then check if it's allowed for the plan
+  if (!isIntegrationAllowed(plan, serviceName)) {
+    const normalizedPlan = normalizePlan(plan);
+    const requiredTier = getIntegrationPlanTier(serviceName);
+    
+    let errorMessage = "This integration is not available on your current plan.";
+    
+    if (requiredTier) {
+      errorMessage = `This integration requires a ${requiredTier} plan or higher. Your current plan: ${normalizedPlan}.`;
+    }
+    
+    const error = new Error(errorMessage);
+    (error as any).code = "INTEGRATION_NOT_ALLOWED";
+    (error as any).upgradeRequired = true;
+    (error as any).requiredPlan = requiredTier;
+    (error as any).currentPlan = normalizedPlan;
+    
+    throw error;
+  }
+}
+
+/**
+ * Get list of allowed integrations for a plan
+ */
+export function getAllowedIntegrations(plan: SubscriptionPlan | string | null | undefined): readonly string[] {
+  const capabilities = getUserPlanCapabilities(plan);
+  return capabilities.allowedIntegrations;
+}
+
+/**
+ * Check if plan can connect to external apps
+ */
+export function canConnectExternalApps(plan: SubscriptionPlan | string | null | undefined): boolean {
+  const capabilities = getUserPlanCapabilities(plan);
+  return capabilities.canConnectExternalApps;
 }
 
 /**
  * Check if user can create a new workflow
  */
-export async function canCreateWorkflow(userId: string): Promise<EnforcementResult> {
-  // First check if user has active subscription
-  const hasAccess = await hasFullAccess(userId);
-  if (!hasAccess) {
-    return {
-      allowed: false,
-      reason: "Active subscription required to create workflows",
-    };
-  }
-
-  // Get user's plan
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { subscriptionPlan: true },
-  });
-
-  if (!user) {
-    return {
-      allowed: false,
-      reason: "User not found",
-    };
-  }
-
-  const planConfig = getPlanConfig(user.subscriptionPlan);
-  if (!planConfig) {
-    return {
-      allowed: false,
-      reason: "Invalid subscription plan",
-    };
-  }
-
-  // Count active workflows
-  const activeWorkflowsCount = await prisma.workflows.count({
-    where: {
-      user_id: userId,
-      active: true,
-    },
-  });
-
-  const maxWorkflows = planConfig.limits.maxActiveWorkflows;
-
-  if (activeWorkflowsCount >= maxWorkflows) {
-    return {
-      allowed: false,
-      reason: `You've reached your plan limit of ${maxWorkflows} active workflows`,
-      currentValue: activeWorkflowsCount,
-      limit: maxWorkflows,
-      upgradeRequired: getUpgradePlan(planConfig.name, "maxActiveWorkflows"),
-    };
-  }
-
-  return {
-    allowed: true,
-    currentValue: activeWorkflowsCount,
-    limit: maxWorkflows,
-  };
-}
-
-/**
- * Check if user can run a workflow (within monthly run limit)
- */
-export async function canRunWorkflow(userId: string): Promise<EnforcementResult> {
-  // First check if user has active subscription
-  const hasAccess = await hasFullAccess(userId);
-  if (!hasAccess) {
-    return {
-      allowed: false,
-      reason: "Active subscription required to run workflows",
-    };
-  }
-
-  // Get user's plan
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { subscriptionPlan: true },
-  });
-
-  if (!user) {
-    return {
-      allowed: false,
-      reason: "User not found",
-    };
-  }
-
-  const planConfig = getPlanConfig(user.subscriptionPlan);
-  if (!planConfig) {
-    return {
-      allowed: false,
-      reason: "Invalid subscription plan",
-    };
-  }
-
-  // Count runs this month
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+export function canCreateWorkflow(
+  plan: SubscriptionPlan | string | null | undefined,
+  existingWorkflowCount: number
+): { allowed: boolean; reason?: string } {
+  const capabilities = getUserPlanCapabilities(plan);
   
-  const runsThisMonth = await prisma.executions.count({
-    where: {
-      user_id: userId,
-      created_at: {
-        gte: startOfMonth,
-      },
-    },
-  });
-
-  const maxRuns = planConfig.limits.maxMonthlyRuns;
-
-  if (runsThisMonth >= maxRuns) {
-    return {
-      allowed: false,
-      reason: `You've reached your monthly limit of ${maxRuns.toLocaleString()} workflow runs`,
-      currentValue: runsThisMonth,
-      limit: maxRuns,
-      upgradeRequired: getUpgradePlan(planConfig.name, "maxMonthlyRuns"),
-    };
-  }
-
-  return {
-    allowed: true,
-    currentValue: runsThisMonth,
-    limit: maxRuns,
-  };
-}
-
-/**
- * Check if user can use a specific integration
- */
-export async function canUseIntegration(
-  userId: string,
-  integrationCategory: "basic" | "advanced" | "custom",
-): Promise<EnforcementResult> {
-  // First check if user has active subscription
-  const hasAccess = await hasFullAccess(userId);
-  if (!hasAccess) {
-    return {
-      allowed: false,
-      reason: "Active subscription required to use integrations",
-    };
-  }
-
-  // Get user's plan
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { subscriptionPlan: true },
-  });
-
-  if (!user) {
-    return {
-      allowed: false,
-      reason: "User not found",
-    };
-  }
-
-  const planConfig = getPlanConfig(user.subscriptionPlan);
-  if (!planConfig) {
-    return {
-      allowed: false,
-      reason: "Invalid subscription plan",
-    };
-  }
-
-  const allowed = planConfig.limits.allowedIntegrations;
-
-  // Check based on integration category
-  if (integrationCategory === "basic") {
-    // All plans allow basic integrations
+  if (capabilities.maxWorkflows === null) {
     return { allowed: true };
   }
-
-  if (integrationCategory === "advanced") {
-    if (allowed === "basic") {
-      return {
-        allowed: false,
-        reason: "Advanced integrations require Pro plan or higher",
-        upgradeRequired: "pro",
-      };
-    }
-    return { allowed: true };
-  }
-
-  if (integrationCategory === "custom") {
-    if (allowed !== "all+custom") {
-      return {
-        allowed: false,
-        reason: "Custom integrations require Agency plan",
-        upgradeRequired: "agency",
-      };
-    }
-    return { allowed: true };
-  }
-
-  return { allowed: false, reason: "Unknown integration category" };
-}
-
-/**
- * Check if user can use a specific feature
- */
-export async function canUseFeature(
-  userId: string,
-  feature: "customWebhooks" | "teamCollaboration" | "whiteLabel" | "apiAccess" | "customIntegrations",
-): Promise<EnforcementResult> {
-  // First check if user has active subscription
-  const hasAccess = await hasFullAccess(userId);
-  if (!hasAccess) {
+  
+  if (existingWorkflowCount >= capabilities.maxWorkflows) {
     return {
       allowed: false,
-      reason: "Active subscription required",
+      reason: `Plan limit reached. Maximum ${capabilities.maxWorkflows} workflow${capabilities.maxWorkflows > 1 ? "s" : ""} allowed on ${capabilities.plan} plan.`,
     };
   }
-
-  // Get user's plan
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { subscriptionPlan: true },
-  });
-
-  if (!user) {
-    return {
-      allowed: false,
-      reason: "User not found",
-    };
-  }
-
-  const planConfig = getPlanConfig(user.subscriptionPlan);
-  if (!planConfig) {
-    return {
-      allowed: false,
-      reason: "Invalid subscription plan",
-    };
-  }
-
-  const hasFeature = planConfig.limits[feature];
-
-  if (!hasFeature) {
-    // Determine which plan has this feature
-    let requiredPlan: PlanName = "pro";
-    if (feature === "whiteLabel" || feature === "apiAccess" || feature === "customIntegrations") {
-      requiredPlan = "agency";
-    }
-
-    return {
-      allowed: false,
-      reason: `${feature} requires ${requiredPlan === "agency" ? "Agency" : "Pro"} plan`,
-      upgradeRequired: requiredPlan,
-    };
-  }
-
+  
   return { allowed: true };
 }
 
 /**
- * Get user's current plan limits summary
+ * Check if user can execute a workflow (monthly limit check)
  */
-export async function getUserPlanSummary(userId: string): Promise<{
-  planName: string | null;
-  limits: {
-    activeWorkflows: { current: number; max: number };
-    monthlyRuns: { current: number; max: number; resetDate: Date };
-    integrations: string;
-    support: string;
-    retention: string;
-  };
-  features: {
-    customWebhooks: boolean;
-    teamCollaboration: boolean;
-    whiteLabel: boolean;
-    apiAccess: boolean;
-    customIntegrations: boolean;
-  };
-} | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { subscriptionPlan: true },
-  });
-
-  if (!user) return null;
-
-  const planConfig = getPlanConfig(user.subscriptionPlan);
-  if (!planConfig) return null;
-
-  // Get current usage
-  const activeWorkflows = await prisma.workflows.count({
-    where: { user_id: userId, active: true },
-  });
-
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-  const monthlyRuns = await prisma.executions.count({
-    where: {
-      user_id: userId,
-      created_at: { gte: startOfMonth },
-    },
-  });
-
-  return {
-    planName: planConfig.displayName,
-    limits: {
-      activeWorkflows: {
-        current: activeWorkflows,
-        max: planConfig.limits.maxActiveWorkflows,
-      },
-      monthlyRuns: {
-        current: monthlyRuns,
-        max: planConfig.limits.maxMonthlyRuns,
-        resetDate: nextMonth,
-      },
-      integrations: planConfig.limits.allowedIntegrations,
-      support: planConfig.limits.supportTier,
-      retention: planConfig.limits.executionLogRetention,
-    },
-    features: {
-      customWebhooks: planConfig.limits.customWebhooks,
-      teamCollaboration: planConfig.limits.teamCollaboration,
-      whiteLabel: planConfig.limits.whiteLabel,
-      apiAccess: planConfig.limits.apiAccess,
-      customIntegrations: planConfig.limits.customIntegrations,
-    },
-  };
+export function canExecuteWorkflow(
+  plan: SubscriptionPlan | string | null | undefined,
+  monthlyExecutionCount: number
+): { allowed: boolean; reason?: string } {
+  const capabilities = getUserPlanCapabilities(plan);
+  
+  // Agency plan: unlimited
+  if (capabilities.maxMonthlyExecutions === null) {
+    return { allowed: true };
+  }
+  
+  // Free plan: no limit on executions, but restricted to internal actions only
+  // This check is handled at the workflow action level, not here
+  if (capabilities.plan === "free") {
+    return { allowed: true };
+  }
+  
+  if (monthlyExecutionCount >= capabilities.maxMonthlyExecutions) {
+    return {
+      allowed: false,
+      reason: `Monthly execution limit reached. Maximum ${capabilities.maxMonthlyExecutions} executions per month on ${capabilities.plan} plan.`,
+    };
+  }
+  
+  return { allowed: true };
 }
 
 /**
- * Helper to determine which plan to upgrade to for a specific limit
+ * Get the maximum number of workflows for a plan
  */
-function getUpgradePlan(currentPlan: PlanName, limit: string): PlanName {
-  if (currentPlan === "starter") {
-    return "pro";
-  }
-  if (currentPlan === "pro") {
-    return "agency";
-  }
-  return "agency"; // Already at highest tier
+export function getPlanWorkflowLimit(plan: SubscriptionPlan | string | null | undefined): number | null {
+  const capabilities = getUserPlanCapabilities(plan);
+  return capabilities.maxWorkflows;
 }
 
+/**
+ * Get the maximum monthly executions for a plan
+ */
+export function getPlanExecutionLimit(plan: SubscriptionPlan | string | null | undefined): number | null {
+  const capabilities = getUserPlanCapabilities(plan);
+  return capabilities.maxMonthlyExecutions;
+}
+
+/**
+ * Check if workflow action uses external integration (for free plan restrictions)
+ */
+export function usesExternalIntegration(action: unknown): boolean {
+  if (!action || typeof action !== "object") return false;
+  
+  // Check if action has integration/service references
+  const actionStr = JSON.stringify(action).toLowerCase();
+  
+  // List of patterns that indicate external integration usage
+  const externalPatterns = [
+    "gmail",
+    "slack",
+    "discord",
+    "notion",
+    "airtable",
+    "stripe",
+    "webhook",
+    "http",
+    "api",
+    "oauth",
+    "connection",
+  ];
+  
+  // Exclude internal Synth actions
+  const internalPatterns = [
+    "synth",
+    "internal",
+    "system",
+  ];
+  
+  // If it contains internal patterns, it's not external
+  if (internalPatterns.some(pattern => actionStr.includes(pattern))) {
+    return false;
+  }
+  
+  // Check for external patterns
+  return externalPatterns.some(pattern => actionStr.includes(pattern));
+}
+
+/**
+ * Validate workflow actions for free plan (must be internal only)
+ */
+export function validateWorkflowForFreePlan(actions: unknown[]): { valid: boolean; reason?: string } {
+  if (!Array.isArray(actions)) {
+    return { valid: true }; // Empty or invalid actions array
+  }
+  
+  for (const action of actions) {
+    if (usesExternalIntegration(action)) {
+      return {
+        valid: false,
+        reason: "Free plan workflows can only use internal Synth actions. External integrations require a subscription.",
+      };
+    }
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Validate that all integrations in a workflow are allowed for the user's plan
+ * 
+ * @param plan - User's subscription plan
+ * @param workflow - Workflow object with trigger and actions
+ * @returns Validation result with list of restricted integrations if any
+ */
+export function validateWorkflowIntegrations(
+  plan: SubscriptionPlan | string | null | undefined,
+  workflow: {
+    trigger?: unknown;
+    actions?: unknown[];
+  }
+): { valid: boolean; restrictedIntegrations?: string[]; reason?: string } {
+  const normalizedPlan = normalizePlan(plan);
+  
+  // Free plan: no external integrations allowed
+  if (normalizedPlan === "free") {
+    const freeValidation = validateWorkflowForFreePlan(workflow.actions || []);
+    if (!freeValidation.valid) {
+      return {
+        valid: false,
+        reason: freeValidation.reason || "Free plan workflows cannot use external integrations.",
+      };
+    }
+    return { valid: true };
+  }
+  
+  // Extract integration IDs from workflow
+  const integrationIds = extractIntegrationIdsFromWorkflow(workflow);
+  
+  if (integrationIds.length === 0) {
+    return { valid: true }; // No integrations found, assume valid
+  }
+  
+  // Check each integration
+  const restrictedIntegrations: string[] = [];
+  for (const integrationId of integrationIds) {
+    if (!isIntegrationAllowed(normalizedPlan, integrationId)) {
+      restrictedIntegrations.push(integrationId);
+    }
+  }
+  
+  if (restrictedIntegrations.length > 0) {
+    return {
+      valid: false,
+      restrictedIntegrations,
+      reason: `The following integrations are not available on your ${normalizedPlan} plan: ${restrictedIntegrations.join(", ")}. Please upgrade to use these integrations.`,
+    };
+  }
+  
+  return { valid: true };
+}

@@ -83,8 +83,8 @@ export default function SettingsPage() {
   const isEmailEditable = mockUser.authProvider !== "google";
 
   return (
-    <AppShell>
-      <div className="px-4 lg:px-6 py-4 lg:py-6 max-w-4xl">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-semibold text-foreground mb-2">Settings</h1>
@@ -365,9 +365,9 @@ export default function SettingsPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
-      </div>
-    </AppShell>
+        </AlertDialog>
+        </div>
+      </PageTransition>
   );
 }
 

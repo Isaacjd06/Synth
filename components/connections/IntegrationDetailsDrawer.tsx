@@ -33,19 +33,8 @@ const IntegrationDetailsDrawer = ({
 }: IntegrationDetailsDrawerProps) => {
   const { openSubscriptionModal } = useSubscription();
 
-  const handleConnect = () => {
-    if (isLocked) {
-      openSubscriptionModal(`${integration?.name} integration`);
-    } else {
-      // TODO: Implement actual connection logic
-      console.log("Connecting to", integration?.name);
-    }
-  };
-
-  const handleDisconnect = () => {
-    // TODO: Implement actual disconnection logic
-    console.log("Disconnecting from", integration?.name);
-  };
+  // Note: This drawer is only shown for unsubscribed users
+  // Connection handlers are not needed here as users must upgrade first
 
   return (
     <AnimatePresence>
@@ -173,40 +162,17 @@ const IntegrationDetailsDrawer = ({
 
               <Separator className="bg-border/50" />
 
-              {/* Action Buttons */}
-              <div className="space-y-3">
-                {!isLocked && (
-                  <>
-                    {integration.connected ? (
-                      <>
-                        <Button 
-                          variant="outline" 
-                          className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10"
-                          onClick={handleDisconnect}
-                        >
-                          Disconnect
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          className="w-full"
-                          onClick={handleConnect}
-                        >
-                          <Plug className="w-4 h-4 mr-2" />
-                          Reconnect
-                        </Button>
-                      </>
-                    ) : (
-                      <Button 
-                        className="w-full bg-primary hover:bg-primary/90"
-                        onClick={handleConnect}
-                      >
-                        <Plug className="w-4 h-4 mr-2" />
-                        Connect {integration.name}
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
+              {/* Action Buttons - Only show upgrade for locked integrations */}
+              {isLocked && (
+                <div className="space-y-3">
+                  <Button 
+                    className="w-full bg-primary hover:bg-primary/90"
+                    onClick={() => openSubscriptionModal(`${integration.name} integration`)}
+                  >
+                    {upgradeMessage}
+                  </Button>
+                </div>
+              )}
             </div>
           </motion.div>
         </>

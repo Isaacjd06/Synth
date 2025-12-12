@@ -202,8 +202,8 @@ export default function MemoryPage() {
   };
 
   return (
-    <AppShell>
-      <div className="px-4 lg:px-6 py-4 lg:py-6">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -450,9 +450,9 @@ export default function MemoryPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
-      </div>
-    </AppShell>
+        </AlertDialog>
+        </div>
+      </PageTransition>
   );
 }
 

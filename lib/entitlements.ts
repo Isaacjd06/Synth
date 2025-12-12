@@ -346,7 +346,7 @@ export async function getUserEntitlementsFromDb(userId: string): Promise<typeof 
     where: { id: userId },
     select: {
       subscriptionStatus: true,
-      subscriptionPlan: true,
+      subscription_plan: true,
     },
   });
   
@@ -354,7 +354,7 @@ export async function getUserEntitlementsFromDb(userId: string): Promise<typeof 
     return null;
   }
   
-  return getUserEntitlements(user.subscriptionStatus, user.subscriptionPlan);
+  return getUserEntitlements(user.subscriptionStatus, user.subscription_plan);
 }
 
 /**
@@ -376,7 +376,7 @@ export async function userHasEntitlement(
     where: { id: userId },
     select: {
       subscriptionStatus: true,
-      subscriptionPlan: true,
+      subscription_plan: true,
     },
   });
   
@@ -384,6 +384,6 @@ export async function userHasEntitlement(
     return false;
   }
   
-  return hasAccess(user.subscriptionStatus, user.subscriptionPlan, entitlement);
+  return hasAccess(user.subscriptionStatus, user.subscription_plan, entitlement);
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import AppShell from "@/components/app/AppShell";
+import { PageTransition } from "@/components/app/PageTransition";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StructuredContextSection from "@/components/knowledge/StructuredContextSection";
 import UnstructuredKnowledgeSection from "@/components/knowledge/UnstructuredKnowledgeSection";
@@ -11,8 +11,8 @@ import KnowledgeSuggestions from "@/components/knowledge/KnowledgeSuggestions";
 
 export default function KnowledgePage() {
   return (
-    <AppShell>
-      <div className="px-4 lg:px-6 py-4 lg:py-6 min-h-[calc(100vh-4rem)]">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6 min-h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-semibold text-foreground mb-2">
@@ -62,9 +62,9 @@ export default function KnowledgePage() {
         <div className="lg:w-80 shrink-0">
           <KnowledgeSuggestions />
         </div>
+        </div>
       </div>
-      </div>
-    </AppShell>
+      </PageTransition>
   );
 }
 

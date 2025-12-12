@@ -28,14 +28,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // 3. Check if user has Stripe customer ID
-    if (!user.stripe_customer_id) {
+    // 3. Check if user has Stripe customer ID and subscription ID
+    // If they don't have a Stripe subscription, they're manually managed (for testing)
+    // Skip syncing to allow manual database changes
+    if (!user.stripe_customer_id || !user.stripe_subscription_id) {
       return NextResponse.json(
         {
-          error:
-            "No Stripe customer found. Please create a subscription first.",
+          message: "User is manually managed (no Stripe subscription). Skipping sync to preserve manual changes.",
+          subscription: null,
         },
-        { status: 400 },
+        { status: 200 },
       );
     }
 

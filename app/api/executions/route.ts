@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateAndCheckSubscription } from "@/lib/auth-helpers";
+import { authenticateUser, authenticateAndCheckSubscription } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { success, error } from "@/lib/api-response";
+import type { ExecutionListItem } from "@/types/api";
 
 // Type definitions
 interface CreateExecutionBody {
@@ -25,14 +27,24 @@ interface UpdateExecutionBody {
 // GET - Fetch all executions
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await authenticateAndCheckSubscription();
+    const authResult = await authenticateUser();
     if (authResult instanceof NextResponse) {
-      return authResult; // Returns 401 or 403
+      return authResult;
     }
-    const { userId } = authResult;
+    const { userId, hasValidSubscription } = authResult;
 
     const { searchParams } = new URL(request.url);
     const workflowId = searchParams.get("workflow_id");
+    const limitParam = searchParams.get("limit");
+    
+    // FREE plan: limit to 5 executions max
+    // Others: unlimited (or use limit param)
+    let limit: number | undefined;
+    if (!hasValidSubscription) {
+      limit = 5;
+    } else if (limitParam) {
+      limit = parseInt(limitParam, 10);
+    }
 
     // Filter by workflow_id if provided, always filter by user_id for security
     const executions = await prisma.executions.findMany({
@@ -41,22 +53,37 @@ export async function GET(request: NextRequest) {
         ...(workflowId ? { workflow_id: workflowId } : {}),
       },
       orderBy: { created_at: "desc" },
+      take: limit,
       include: {
-        workflow: {
+        workflows: {
           select: {
             id: true,
             name: true,
-            user_id: true,
           },
         },
       },
     });
 
-    return NextResponse.json({ success: true, data: executions });
-  } catch (error) {
-    console.error("GET /api/executions error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch executions" },
+    // Transform to match expected format
+    const executionList = executions.map(exec => ({
+      id: exec.id,
+      workflowId: exec.workflow_id,
+      workflowName: exec.workflows?.name || "Unknown Workflow",
+      status: exec.status,
+      createdAt: exec.created_at.toISOString(),
+      durationMs: exec.execution_time_ms || 
+        (exec.started_at && exec.finished_at
+          ? new Date(exec.finished_at).getTime() - new Date(exec.started_at).getTime()
+          : null),
+      errorMessage: exec.error_message,
+    }));
+
+    // Return array directly to match UI expectations (similar to workflows list)
+    return NextResponse.json(executionList, { status: 200 });
+  } catch (err) {
+    console.error("GET /api/executions error:", err);
+    return error(
+      err instanceof Error ? err.message : "Internal server error",
       { status: 500 }
     );
   }
@@ -75,10 +102,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!body.workflow_id) {
-      return NextResponse.json(
-        { error: "workflow_id is required" },
-        { status: 400 }
-      );
+      return error("workflow_id is required", { status: 400 });
     }
 
     // Verify workflow exists and belongs to user
@@ -90,10 +114,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workflow) {
-      return NextResponse.json(
-        { error: "Workflow not found" },
-        { status: 404 }
-      );
+      return error("Workflow not found", { status: 404 });
     }
 
     const execution = await prisma.executions.create({
@@ -108,11 +129,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: execution }, { status: 201 });
-  } catch (error) {
-    console.error("POST /api/executions error:", error);
-    return NextResponse.json(
-      { error: "Failed to create execution" },
+    return success(execution);
+  } catch (err) {
+    console.error("POST /api/executions error:", err);
+    return error(
+      err instanceof Error ? err.message : "Failed to create execution",
       { status: 500 }
     );
   }
@@ -130,10 +151,7 @@ export async function PUT(request: NextRequest) {
     const body: UpdateExecutionBody = await request.json();
 
     if (!body.id) {
-      return NextResponse.json(
-        { error: "Execution ID is required" },
-        { status: 400 }
-      );
+      return error("Execution ID is required", { status: 400 });
     }
 
     // Check if execution exists and belongs to user
@@ -145,10 +163,7 @@ export async function PUT(request: NextRequest) {
     });
 
     if (!existingExecution) {
-      return NextResponse.json(
-        { error: "Execution not found" },
-        { status: 404 }
-      );
+      return error("Execution not found", { status: 404 });
     }
 
     const execution = await prisma.executions.update({
@@ -162,11 +177,11 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, data: execution });
-  } catch (error) {
-    console.error("PUT /api/executions error:", error);
-    return NextResponse.json(
-      { error: "Failed to update execution" },
+    return success(execution);
+  } catch (err) {
+    console.error("PUT /api/executions error:", err);
+    return error(
+      err instanceof Error ? err.message : "Failed to update execution",
       { status: 500 }
     );
   }
@@ -185,10 +200,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Execution ID is required" },
-        { status: 400 }
-      );
+      return error("Execution ID is required", { status: 400 });
     }
 
     // Check if execution exists and belongs to user
@@ -200,21 +212,18 @@ export async function DELETE(request: NextRequest) {
     });
 
     if (!existingExecution) {
-      return NextResponse.json(
-        { error: "Execution not found" },
-        { status: 404 }
-      );
+      return error("Execution not found", { status: 404 });
     }
 
     await prisma.executions.delete({
       where: { id },
     });
 
-    return NextResponse.json({ success: true, data: { id } });
-  } catch (error) {
-    console.error("DELETE /api/executions error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete execution" },
+    return success({ id });
+  } catch (err) {
+    console.error("DELETE /api/executions error:", err);
+    return error(
+      err instanceof Error ? err.message : "Failed to delete execution",
       { status: 500 }
     );
   }

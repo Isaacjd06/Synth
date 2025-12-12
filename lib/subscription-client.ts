@@ -4,7 +4,7 @@
  * These utilities don't import Prisma and can be safely used in client components
  */
 
-export type SubscriptionPlan = "none" | "starter" | "pro" | "agency";
+export type SubscriptionPlan = "free" | "starter" | "pro" | "agency";
 
 export interface SubscriptionUsage {
   activeWorkflowsUsed?: number;
@@ -16,7 +16,7 @@ export interface SubscriptionUsage {
 
 export interface SubscriptionState {
   plan: SubscriptionPlan;
-  isSubscribed: boolean; // plan !== "none"
+  isSubscribed: boolean; // plan !== "free"
   isTrial?: boolean;
   renewalDate?: string | null;
   billingCycle?: "monthly" | "yearly" | null;
@@ -27,15 +27,16 @@ export interface SubscriptionState {
  * Map backend plan name to SubscriptionPlan type
  */
 export function mapPlanToSubscriptionPlan(plan: string | null | undefined): SubscriptionPlan {
-  if (!plan) return "none";
+  if (!plan) return "free";
   
   const normalized = plan.toLowerCase().trim();
   
+  if (normalized === "free" || normalized === "none" || normalized === "inactive") return "free";
   if (normalized.includes("starter")) return "starter";
   if (normalized.includes("pro") || normalized.includes("growth")) return "pro";
   if (normalized.includes("agency") || normalized.includes("scale")) return "agency";
   
-  return "none";
+  return "free";
 }
 
 /**
@@ -49,7 +50,7 @@ export function getLogRetentionDays(plan: SubscriptionPlan): number {
       return 30;
     case "agency":
       return 90;
-    case "none":
+    case "free":
     default:
       return 0;
   }
@@ -66,9 +67,9 @@ export function getPlanDisplayName(plan: SubscriptionPlan): string {
       return "Pro";
     case "agency":
       return "Agency";
-    case "none":
+    case "free":
     default:
-      return "No Active Subscription";
+      return "Free";
   }
 }
 
@@ -99,7 +100,7 @@ export function getPlanBadgeColors(plan: SubscriptionPlan): {
         text: "text-purple-400",
         border: "border-purple-500/30",
       };
-    case "none":
+    case "free":
     default:
       return {
         bg: "bg-muted/50",

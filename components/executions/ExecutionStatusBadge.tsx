@@ -1,3 +1,4 @@
+"use client";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,3 @@ const ExecutionStatusBadge = ({ status, className }: ExecutionStatusBadgeProps) 
 };
 
 export default ExecutionStatusBadge;
-
-
-

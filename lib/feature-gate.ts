@@ -1,129 +1,110 @@
 import { prisma } from "@/lib/prisma";
-
-// Plan types aligned with pricing page and backend
-// - free: No subscription (1 workflow, no execution)
-// - starter: Starter plan - $49/mo (3 workflows)
-// - growth: Growth plan (stored as "pro" in backend) - $149/mo (10 workflows)
-// - scale: Scale plan (stored as "agency" in backend) - $399/mo (40 workflows)
-export type PlanType = "free" | "starter" | "growth" | "scale";
-
-export const FEATURES = {
-  maxWorkflows: {
-    free: 1,
-    starter: 3,
-    growth: 10,
-    scale: 40,
-  },
-  allowWorkflowExecution: {
-    free: false,
-    starter: true,
-    growth: true,
-    scale: true,
-  },
-} as const;
+import {
+  canCreateWorkflow,
+  canExecuteWorkflow,
+  getPlanWorkflowLimit,
+  getPlanExecutionLimit,
+  type SubscriptionPlan,
+} from "@/lib/plan-enforcement";
 
 /**
- * Determines the user's plan based on plan field.
- * Maps backend plan names to plan types:
- * - "starter" → "starter"
- * - "pro" → "growth" (Growth plan)
- * - "agency" → "scale" (Scale plan)
- * - null/undefined → "free"
- *
- * @param user - User object with plan field
- * @returns PlanType ("free" | "starter" | "growth" | "scale")
+ * Get user's subscription plan from database
  */
-export function getUserPlan(user: {
-  plan?: string | null;
-}): PlanType {
-  const plan = user.plan?.toLowerCase() || "";
+export async function getUserSubscriptionPlan(userId: string): Promise<SubscriptionPlan> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { subscription_plan: true },
+  });
 
-  // Map backend plan names to plan types
-  if (plan.includes("starter")) {
-    return "starter";
+  if (!user || !user.subscription_plan) {
+    return "free";
   }
 
-  if (plan.includes("pro")) {
-    return "growth";
-  }
-
-  if (plan.includes("agency")) {
-    return "scale";
-  }
-
-  return "free";
-}
-
-/**
- * Checks if a feature is allowed for a user.
- *
- * @param user - User object with plan field
- * @param feature - Feature name (e.g., "maxWorkflows", "allowWorkflowExecution")
- * @returns true if feature is allowed, false otherwise
- */
-export function checkFeature(
-  user: { plan?: string | null },
-  feature: keyof typeof FEATURES,
-): boolean {
-  const plan = getUserPlan(user);
-  const featureConfig = FEATURES[feature];
-
-  if (typeof featureConfig === "object" && plan in featureConfig) {
-    return featureConfig[plan as keyof typeof featureConfig] as boolean;
-  }
-
-  return false;
-}
-
-/**
- * Gets the feature limit value for a user.
- *
- * @param user - User object with plan field
- * @param feature - Feature name (e.g., "maxWorkflows")
- * @returns The limit value for the user's plan
- */
-export function getFeatureLimit(
-  user: { plan?: string | null },
-  feature: keyof typeof FEATURES,
-): number {
-  const plan = getUserPlan(user);
-  const featureConfig = FEATURES[feature];
-
-  if (typeof featureConfig === "object" && plan in featureConfig) {
-    return featureConfig[plan as keyof typeof featureConfig] as number;
-  }
-
-  return 0;
+  return user.subscription_plan as SubscriptionPlan;
 }
 
 /**
  * Checks if user has reached the maximum workflows limit.
+ * Uses the new plan enforcement system.
  *
  * @param userId - User ID
- * @returns true if user has reached the limit, false otherwise
+ * @returns Object with allowed status, current count, and max allowed
  */
 export async function checkWorkflowLimit(userId: string): Promise<{
   allowed: boolean;
   currentCount: number;
-  maxAllowed: number;
+  maxAllowed: number | null;
+  reason?: string;
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { plan: true },
+    select: { subscription_plan: true },
   });
 
   if (!user) {
-    return { allowed: false, currentCount: 0, maxAllowed: 0 };
+    return { allowed: false, currentCount: 0, maxAllowed: 0, reason: "User not found" };
   }
 
-  const maxAllowed = getFeatureLimit(user, "maxWorkflows");
+  const plan = (user.subscription_plan || "free") as SubscriptionPlan;
   const currentCount = await prisma.workflows.count({
     where: { user_id: userId },
   });
 
+  const limitCheck = canCreateWorkflow(plan, currentCount);
+  const maxAllowed = getPlanWorkflowLimit(plan);
+
   return {
-    allowed: currentCount < maxAllowed,
+    allowed: limitCheck.allowed,
     currentCount,
     maxAllowed,
+    reason: limitCheck.reason,
+  };
+}
+
+/**
+ * Checks if user can execute workflows (monthly limit check).
+ * Uses the new plan enforcement system.
+ *
+ * @param userId - User ID
+ * @returns Object with allowed status and reason if not allowed
+ */
+export async function checkExecutionLimit(userId: string): Promise<{
+  allowed: boolean;
+  currentCount: number;
+  maxAllowed: number | null;
+  reason?: string;
+}> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { subscription_plan: true },
+  });
+
+  if (!user) {
+    return { allowed: false, currentCount: 0, maxAllowed: 0, reason: "User not found" };
+  }
+
+  const plan = (user.subscription_plan || "free") as SubscriptionPlan;
+  
+  // Count executions in current month
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  
+  const currentCount = await prisma.executions.count({
+    where: {
+      user_id: userId,
+      created_at: {
+        gte: startOfMonth,
+      },
+    },
+  });
+
+  const limitCheck = canExecuteWorkflow(plan, currentCount);
+  const maxAllowed = getPlanExecutionLimit(plan);
+
+  return {
+    allowed: limitCheck.allowed,
+    currentCount,
+    maxAllowed,
+    reason: limitCheck.reason,
   };
 }

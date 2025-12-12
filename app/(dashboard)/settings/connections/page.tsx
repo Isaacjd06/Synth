@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Pencil, Trash2, Loader2, Link2, Key, Globe, Zap } from "lucide-react";
-import AppShell from "@/components/app/AppShell";
+import { PageTransition } from "@/components/app/PageTransition";
 import AppCard from "@/components/app/AppCard";
 import StatusBadge from "@/components/app/StatusBadge";
 import AvailableServices from "@/components/connections/AvailableServices";
@@ -120,8 +120,8 @@ export default function ConnectionsPage() {
   };
 
   return (
-    <AppShell>
-      <div className="px-4 lg:px-6 py-4 lg:py-6">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">Connected Services</h1>
@@ -327,7 +327,7 @@ export default function ConnectionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
-    </AppShell>
+        </div>
+      </PageTransition>
   );
 }

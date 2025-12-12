@@ -11,6 +11,13 @@ enum SubscriptionStatus {
   UNSUBSCRIBED
 }
 
+enum SubscriptionPlan {
+  free
+  starter
+  pro
+  agency
+}
+
 model CoreFramework {
   id         String   @id
   slug       String   @unique
@@ -115,7 +122,7 @@ model User {
   stripe_customer_id          String?
   stripe_subscription_id      String?
   subscription_ends_at        DateTime?
-  subscription_plan           String?
+  subscription_plan           SubscriptionPlan              @default(free)
   subscription_started_at     DateTime?
   subscription_status         String?                       @default("inactive")
   subscriptionStatus          SubscriptionStatus            @default(UNSUBSCRIBED)
@@ -455,6 +462,7 @@ model workflows {
   actions                    Json?
   active                     Boolean                     @default(false)
   n8n_workflow_id            String?
+  pipedream_workflow_id      String?
   created_at                 DateTime                    @default(now())
   updated_at                 DateTime
   created_by_ai              Boolean                     @default(false)

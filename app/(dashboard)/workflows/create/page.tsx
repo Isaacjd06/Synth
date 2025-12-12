@@ -337,7 +337,8 @@ export default function CreateWorkflowPage() {
   };
 
   return (
-    <div className="px-4 lg:px-6 py-4 lg:py-6 max-w-4xl">
+    <PageTransition className="max-w-7xl mx-auto">
+      <div className="space-y-6">
       <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-6">Create Workflow</h1>
 
       {/* Templates */}
@@ -599,6 +600,7 @@ export default function CreateWorkflowPage() {
           "Create Workflow"
         )}
       </Button>
-    </div>
+        </div>
+      </PageTransition>
   );
 }

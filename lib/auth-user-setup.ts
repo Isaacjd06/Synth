@@ -54,11 +54,28 @@ export async function setupUserAfterLogin(
       updateData.provider = "google";
     }
 
-    // Set up 3-day trial for new users
-    if (isNewUser) {
+    // Set up 3-day trial for new users (only if they don't already have a trial)
+    // Check if user already has a trial set
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { trial_ends_at: true, created_at: true },
+    });
+    
+    // Set up 3-day trial if:
+    // 1. This is marked as a new user, OR
+    // 2. User was created in the last 5 minutes AND doesn't have a trial yet
+    const shouldSetTrial = isNewUser || (
+      existingUser &&
+      !existingUser.trial_ends_at &&
+      new Date().getTime() - new Date(existingUser.created_at).getTime() < 300000 // 5 minutes
+    );
+    
+    if (shouldSetTrial && !existingUser?.trial_ends_at) {
       const trialEndsAt = new Date();
-      trialEndsAt.setDate(trialEndsAt.getDate() + 3); // 3-day trial
+      trialEndsAt.setDate(trialEndsAt.getDate() + 3); // 3-day trial from now
+      trialEndsAt.setHours(23, 59, 59, 999); // Set to end of day for full 3 days
       updateData.trial_ends_at = trialEndsAt;
+      console.log(`[AUTH] Setting up 3-day trial for user ${userId}, trial ends at: ${trialEndsAt.toISOString()}`);
     }
 
     // Update user with profile data and trial setup

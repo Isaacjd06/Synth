@@ -93,8 +93,8 @@ export async function getUserAccessLevel(
     where: { id: userId },
     select: {
       subscriptionStatus: true,
-      trialEndsAt: true,
-      subscriptionEndsAt: true,
+      trial_ends_at: true,
+      subscription_ends_at: true,
     },
   });
 
@@ -111,47 +111,52 @@ export async function getUserAccessLevel(
 
   const hasFullAccess = isSubscriptionStatusActive(
     user.subscriptionStatus,
-    user.trialEndsAt,
+    user.trial_ends_at,
   );
 
   const isInTrial =
-    user.trialEndsAt !== null && new Date(user.trialEndsAt) > new Date();
+    user.trial_ends_at !== null && new Date(user.trial_ends_at) > new Date();
 
   return {
     accessLevel: hasFullAccess ? "full" : "minimal",
     hasFullAccess,
     hasMinimalAccess: !hasFullAccess, // User exists but no access
     isInTrial,
-    trialEndsAt: user.trialEndsAt,
+    trialEndsAt: user.trial_ends_at,
     subscriptionStatus: user.subscriptionStatus,
   };
 }
 
 /**
- * Check if user has full access (active subscription or valid trial)
+ * Check if user has full access (active subscription OR valid 3-day trial)
  * 
- * IMPORTANT: This function now requires an ACTIVE PAID SUBSCRIPTION.
- * Trial periods are no longer sufficient - users must have a paid plan.
+ * Users have full access if:
+ * 1. They have an active paid subscription (starter, pro, or agency)
+ * 2. OR they are within their 3-day free trial period (trial_ends_at is in the future)
  * 
  * @param userId - User ID
- * @returns true if user has active paid subscription
+ * @returns true if user has active subscription or valid trial
  */
 export async function hasFullAccess(userId: string): Promise<boolean> {
   const accessInfo = await getUserAccessLevel(userId);
   
-  // Require active subscription (not just trial)
-  // User must have subscription_status = "active" AND a valid plan
+  // If user is in trial period, grant full access
+  if (accessInfo.isInTrial) {
+    return true;
+  }
+  
+  // If not in trial, require active paid subscription
   if (!accessInfo.hasFullAccess) {
     return false;
   }
   
-  // Additional check: ensure user has a subscription plan set
-  // This ensures they're on a paid plan, not just in trial
+  // Additional check: ensure user has a subscription plan set (not free)
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { 
       subscriptionStatus: true,
-      subscriptionPlan: true,
+      subscription_plan: true,
+      trial_ends_at: true,
     },
   });
   
@@ -159,18 +164,23 @@ export async function hasFullAccess(userId: string): Promise<boolean> {
     return false;
   }
   
-  // Must have active subscription status AND a plan
-  // Check for enum value SUBSCRIBED or legacy string values
+  // Check if still in trial (double-check)
+  if (user.trial_ends_at && new Date(user.trial_ends_at) > new Date()) {
+    return true;
+  }
+  
+  // Must have active subscription status AND a paid plan (not free)
   const hasActiveStatus = 
     user.subscriptionStatus === SubscriptionStatus.SUBSCRIBED ||
     user.subscriptionStatus === "active" || 
     user.subscriptionStatus === "trialing";
-  const hasPlan = !!user.subscriptionPlan && 
-    (user.subscriptionPlan.toLowerCase().includes("starter") ||
-     user.subscriptionPlan.toLowerCase().includes("pro") ||
-     user.subscriptionPlan.toLowerCase().includes("agency"));
+  
+  // Check if plan is not "free"
+  const plan = (user.subscription_plan || "free").toLowerCase();
+  const hasPaidPlan = plan !== "free" && 
+    (plan === "starter" || plan === "pro" || plan === "agency");
 
-  return hasActiveStatus && hasPlan;
+  return hasActiveStatus && hasPaidPlan;
 }
 
 /**

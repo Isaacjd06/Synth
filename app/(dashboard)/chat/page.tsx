@@ -53,6 +53,10 @@ export default function ChatPage() {
   const [fixContext, setFixContext] = useState<FixInChatContext | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoScrolledRef = useRef(false);
 
   // Workflow for modal (will be set when workflow is created)
   const [createdWorkflow, setCreatedWorkflow] = useState<{
@@ -87,12 +91,78 @@ export default function ChatPage() {
     }
   }, [searchParams, router]);
 
+  // Auto-scroll to bottom on initial page load or when navigating to chat
   useEffect(() => {
-    // Only scroll when there are messages to avoid initial scroll issues
-    if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) {
+      // Reset flag when messages are cleared
+      hasAutoScrolledRef.current = false;
+      return;
     }
-  }, [messages]);
+
+    if (!scrollViewportRef.current) return;
+
+    // On initial load, always scroll to bottom
+    if (!hasAutoScrolledRef.current) {
+      // Use a small delay to ensure DOM is fully rendered
+      const timer = setTimeout(() => {
+        if (scrollViewportRef.current) {
+          scrollViewportRef.current.scrollTop = scrollViewportRef.current.scrollHeight;
+          hasAutoScrolledRef.current = true;
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length]);
+
+  // Auto-scroll when new messages arrive (only if user is at bottom)
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+
+    // Check if user is near the bottom (within 100px)
+    const isNearBottom = 
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 100;
+
+    // Only auto-scroll if user is at bottom or hasn't manually scrolled
+    if (isNearBottom && !isUserScrolling) {
+      // Use requestAnimationFrame for smooth scroll
+      requestAnimationFrame(() => {
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      });
+    }
+  }, [messages, isUserScrolling]);
+
+  // Track user scrolling to prevent auto-scroll when user is reading history
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+
+    const handleScroll = () => {
+      setIsUserScrolling(true);
+      
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      // Reset isUserScrolling after user stops scrolling for 1 second
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 1000);
+    };
+
+    viewport.addEventListener("scroll", handleScroll);
+    return () => {
+      viewport.removeEventListener("scroll", handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -241,7 +311,7 @@ export default function ChatPage() {
 
   return (
     <AppShell>
-      <div className="h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+      <div className="fixed inset-0 top-16 left-0 lg:left-60 right-0 bottom-0 flex flex-col overflow-hidden">
         {/* Subscription Banner - Fixed at top */}
         {!isSubscribed && (
           <div className="px-4 pt-4 flex-shrink-0">
@@ -309,8 +379,13 @@ export default function ChatPage() {
 
         {/* Chat Messages Area - Only scrolls when messages exist */}
         {messages.length > 0 ? (
-          <ScrollArea className="flex-1 px-4 min-h-0">
-          <div className="max-w-2xl mx-auto py-6 space-y-6">
+          <div className="flex-1 px-4 min-h-0 overflow-hidden">
+            <div 
+              ref={scrollViewportRef}
+              className="h-full overflow-y-auto scroll-smooth"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              <div className="max-w-2xl mx-auto py-6 space-y-6 pb-32">
             <AnimatePresence mode="popLayout">
                 {messages.map((message) => (
                   <motion.div 
@@ -421,9 +496,10 @@ export default function ChatPage() {
               )}
             </AnimatePresence>
 
-            <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
           </div>
-        </ScrollArea>
         ) : (
           <div className="flex-1 px-4 flex items-center justify-center min-h-0">
             <div className="max-w-2xl mx-auto w-full">
@@ -447,8 +523,8 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Message Input Area - Fixed at bottom */}
-        <div className="px-4 py-4 border-t border-border/60 bg-background/90 backdrop-blur-sm flex-shrink-0">
+        {/* Message Input Area - Fixed at bottom of viewport */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-4 border-t border-border/60 bg-background/95 backdrop-blur-md flex-shrink-0 z-20">
           <div className="max-w-2xl mx-auto flex gap-3">
             <Input
               ref={inputRef}

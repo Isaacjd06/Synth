@@ -141,8 +141,8 @@ export async function GET(req: Request) {
     }
 
     // 5. Calculate usage limits
-    const { getFeatureLimit } = await import("@/lib/feature-gate");
-    const maxWorkflows = getFeatureLimit({ plan: user.subscription_plan }, "maxWorkflows");
+    const { getPlanWorkflowLimit } = await import("@/lib/plan-enforcement");
+    const maxWorkflows = getPlanWorkflowLimit(user.subscription_plan);
     
     // Get current usage counts
     const currentWorkflowCount = await prisma.workflows.count({

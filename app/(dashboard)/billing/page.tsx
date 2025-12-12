@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
@@ -13,15 +12,12 @@ import {
   Download,
   X,
   Loader2,
-  ArrowRight,
   Settings,
   Package,
   BarChart3,
   Shield,
   RefreshCw,
 } from "lucide-react";
-import AppShell from "@/components/app/AppShell";
-import AppCard from "@/components/app/AppCard";
 import { PageTransition, PageItem } from "@/components/app/PageTransition";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,14 +35,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { toast } from "sonner";
+import { synthToast } from "@/lib/synth-toast";
 import { useStripePrices, StripePlan, StripeAddon } from "@/hooks/use-stripe-prices";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PaymentMethodModal from "@/components/billing/PaymentMethodModal";
 
-// Mock subscription state - set to active subscription for testing
-const mockSubscription: {
+// Subscription type
+interface SubscriptionData {
   planId: string;
   planName: string;
   status: "active" | "trialing" | "past_due" | "canceling" | "canceled";
@@ -67,13 +63,16 @@ const mockSubscription: {
     expiryMonth: number;
     expiryYear: number;
   };
-} | null = {
+}
+
+// Default subscription data - always have an active subscription
+const defaultSubscription: SubscriptionData = {
   planId: "pro",
   planName: "Pro",
   status: "active",
   billingInterval: "monthly",
-  renewalDate: "2025-01-15",
-  ownedAddons: ["addon-1"],
+  renewalDate: "2025-01-14",
+  ownedAddons: [],
   usageLimits: {
     workflowsUsed: 8,
     workflowsLimit: 25,
@@ -100,15 +99,16 @@ const mockPurchaseLog = [
 ];
 
 export default function BillingPage() {
-  const router = useRouter();
   const { plans, addons, loading: pricesLoading, error: pricesError } = useStripePrices();
-  const [subscription, setSubscription] = useState(mockSubscription);
+  const [subscription, setSubscription] = useState<SubscriptionData>(defaultSubscription);
+  const [isSubscribed, setIsSubscribed] = useState(true);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showChangePlanModal, setShowChangePlanModal] = useState(false);
+  const [showStartSubscriptionModal, setShowStartSubscriptionModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [cancelConfirmation, setCancelConfirmation] = useState("");
   const [cancelReason, setCancelReason] = useState("");
@@ -116,7 +116,6 @@ export default function BillingPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [changePlanLoading, setChangePlanLoading] = useState(false);
 
-  const hasSubscription = subscription !== null;
   const isCancelConfirmValid = cancelConfirmation === "UNSUBSCRIBE";
 
   const formatDate = (dateString: string) => {
@@ -149,18 +148,7 @@ export default function BillingPage() {
         : [...prev, addonId]
     );
   };
-
-  const handleContinueToCheckout = () => {
-    if (!selectedPlan) return;
-    const params = new URLSearchParams();
-    params.set("plan", selectedPlan);
-    params.set("interval", billingInterval);
-    if (selectedAddons.length > 0) {
-      params.set("addons", selectedAddons.join(","));
-    }
-    router.push(`/checkout?${params.toString()}`);
-  };
-
+  
   const handleCancelSubscription = async () => {
     if (!isCancelConfirmValid) return;
     setLoading(true);
@@ -168,13 +156,11 @@ export default function BillingPage() {
     try {
       await new Promise((r) => setTimeout(r, 1500));
 
-      setSubscription(null);
+      setIsSubscribed(false);
       setShowCancelModal(false);
       setCancelConfirmation("");
       setCancelReason("");
-      toast.success("Subscription Canceled", {
-        description: "Your plan has been canceled.",
-      });
+      synthToast.success("Subscription Canceled", "Your plan has been canceled.");
     } catch (error) {
       setErrorMessage("Failed to cancel subscription. Please try again.");
     } finally {
@@ -182,6 +168,49 @@ export default function BillingPage() {
     }
   };
 
+  const handleStartSubscription = async () => {
+    if (!selectedPlan) return;
+    
+    // Check if payment method exists
+    const hasPaymentMethod = subscription.paymentMethod.last4;
+    
+    if (!hasPaymentMethod) {
+      synthToast.error("Payment Method Required", "Please add a payment method before subscribing.");
+      setShowPaymentModal(true);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      
+      const planData = plans.find(p => p.id === selectedPlan);
+      if (planData) {
+        setSubscription({
+          ...subscription,
+          planId: selectedPlan,
+          planName: planData.name,
+          status: "active",
+          billingInterval,
+          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          usageLimits: {
+            workflowsUsed: 0,
+            workflowsLimit: selectedPlan === "starter" ? 5 : selectedPlan === "pro" ? 25 : 100,
+            executionsUsed: 0,
+            executionsLimit: selectedPlan === "starter" ? 1000 : selectedPlan === "pro" ? 10000 : 50000,
+          },
+        });
+        setIsSubscribed(true);
+        setShowStartSubscriptionModal(false);
+        setSelectedPlan(null);
+        synthToast.success("Subscription Started", `Welcome to ${planData.name}!`);
+      }
+    } catch (error) {
+      synthToast.error("Subscription Failed", "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpenPaymentModal = () => {
     setShowPaymentModal(true);
@@ -203,7 +232,7 @@ export default function BillingPage() {
   };
 
   const handleConfirmPlanChange = async () => {
-    if (!selectedPlan || selectedPlan === subscription?.planId) return;
+    if (!selectedPlan || selectedPlan === subscription.planId) return;
     
     setChangePlanLoading(true);
     
@@ -212,7 +241,7 @@ export default function BillingPage() {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const newPlan = plans.find(p => p.id === selectedPlan);
-      if (newPlan && subscription) {
+      if (newPlan) {
         // Update subscription state with new plan
         setSubscription({
           ...subscription,
@@ -220,16 +249,12 @@ export default function BillingPage() {
           planName: newPlan.name,
         });
         
-        toast.success("Plan Changed", {
-          description: `Your plan has been updated to ${newPlan.name}. Changes take effect next billing cycle.`,
-        });
+        synthToast.success("Plan Changed", `Your plan has been updated to ${newPlan.name}. Changes take effect next billing cycle.`);
         setShowChangePlanModal(false);
         setSelectedPlan(null);
       }
     } catch (error) {
-      toast.error("Plan Change Failed", {
-        description: "Failed to update your plan. Please try again.",
-      });
+      synthToast.error("Plan Change Failed", "Failed to update your plan. Please try again.");
     } finally {
       setChangePlanLoading(false);
     }
@@ -238,9 +263,7 @@ export default function BillingPage() {
   const handlePurchaseAddon = (addonId: string) => {
     const addon = addons.find((a) => a.id === addonId);
     if (addon) {
-      toast.success("Add-on Purchased", {
-        description: `${addon.name} has been added to your plan.`,
-      });
+      synthToast.success("Add-on Purchased", `${addon.name} has been added to your plan.`);
     }
   };
 
@@ -341,7 +364,7 @@ export default function BillingPage() {
           </>
         ) : (
           plans.map((plan) => {
-            const isCurrentPlan = hasSubscription && subscription?.planId === plan.id;
+            const isCurrentPlan = subscription.planId === plan.id;
             return (
               <motion.div
                 key={plan.id}
@@ -432,609 +455,542 @@ export default function BillingPage() {
   );
 
   return (
-    <AppShell>
-      <PageTransition className="px-4 lg:px-6 py-8 max-w-5xl mx-auto pb-32">
-        {/* Header */}
-        <PageItem className="text-center mb-10">
-          <h1 className="font-display text-3xl md:text-4xl text-foreground mb-3 synth-header">
-            {hasSubscription ? "Billing Settings" : "Billing & Subscription"}
-          </h1>
-          <p className="text-muted-foreground text-lg font-light">
-            {hasSubscription
-              ? "Manage your subscription, billing, and add-ons"
-              : "Choose a plan to get started with Synth"}
-          </p>
-        </PageItem>
+    <PageTransition className="max-w-5xl mx-auto px-4 lg:px-6 py-8 pb-32">
+      {/* Header */}
+      <PageItem className="text-center mb-10">
+        <h1 className="font-display text-3xl md:text-4xl text-foreground mb-3 synth-header">
+          Billing Settings
+        </h1>
+        <p className="text-muted-foreground text-lg font-light">
+          Manage your subscription, billing, and add-ons
+        </p>
+      </PageItem>
 
-        {/* Success/Error Messages */}
-        <AnimatePresence>
-          {successMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 flex items-center gap-3"
+      {/* Success/Error Messages */}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 flex items-center gap-3"
+          >
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="text-emerald-300">{successMessage}</span>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="ml-auto text-emerald-400 hover:text-emerald-300"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <span className="text-emerald-300">{successMessage}</span>
-              <button
-                onClick={() => setSuccessMessage(null)}
-                className="ml-auto text-emerald-400 hover:text-emerald-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-          {errorMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-4 rounded-xl bg-gradient-to-r from-destructive/20 to-destructive/10 border border-destructive/30 flex items-center gap-3"
-            >
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              <span className="text-red-300">{errorMessage}</span>
-              <button
-                onClick={() => setErrorMessage(null)}
-                className="ml-auto text-destructive hover:text-red-400"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-          {pricesError && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-4 rounded-xl bg-gradient-to-r from-destructive/20 to-destructive/10 border border-destructive/30 flex items-center gap-3"
-            >
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              <span className="text-red-300">{pricesError}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* NO SUBSCRIPTION STATE */}
-        {!hasSubscription && (
-          <>
-            {/* Subscribe Banner */}
-            <PageItem className="mb-8">
-              <div className="p-6 rounded-xl bg-gradient-to-r from-primary/20 via-primary/10 to-transparent border border-primary/30">
-                <div className="flex items-center gap-3 mb-2">
-                  <Sparkles className="w-6 h-6 text-primary" />
-                  <h3 className="font-accent text-xl text-foreground">Unlock Synth's Full Power</h3>
-                </div>
-                <p className="text-muted-foreground">
-                  Subscribe to a plan to activate workflows, access AI automation, and scale your operations.
-                </p>
-              </div>
-            </PageItem>
-
-            {/* Plan Selection */}
-            <PageItem className="mb-8">
-              <PlanSelectionUI />
-            </PageItem>
-
-            {/* Add-ons Section - Vertical Cards */}
-            <PageItem className="mb-8">
-              <AppCard>
-                <div className="flex items-center gap-3 mb-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h2 className="font-accent text-xl text-foreground">Add-ons</h2>
-                </div>
-                <p className="text-muted-foreground mb-6">
-                  Enhance your workflow with these one-time purchases (optional)
-                </p>
-                <div className="flex flex-col gap-4">
-                  {pricesLoading ? (
-                    <>
-                      <AddonSkeleton />
-                      <AddonSkeleton />
-                      <AddonSkeleton />
-                    </>
-                  ) : (
-                    addons.map((addon) => {
-                      const isSelected = selectedAddons.includes(addon.id);
-                      return (
-                        <div
-                          key={addon.id}
-                          onClick={() => handleAddonToggle(addon.id)}
-                          className={`p-5 rounded-xl border transition-all cursor-pointer ${
-                            isSelected
-                              ? "border-primary ring-2 ring-primary/30 bg-primary/5"
-                              : "border-border hover:border-primary/50 bg-card"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h4 className="font-medium text-foreground text-lg">{addon.name}</h4>
-                                {isSelected && (
-                                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
-                                )}
-                              </div>
-                              <p className="text-muted-foreground">{addon.description}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="text-2xl font-bold text-foreground">${addon.price}</span>
-                              <p className="text-xs text-muted-foreground">one-time</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </AppCard>
-            </PageItem>
-          </>
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
         )}
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-6 p-4 rounded-xl bg-gradient-to-r from-destructive/20 to-destructive/10 border border-destructive/30 flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <span className="text-red-300">{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="ml-auto text-destructive hover:text-red-400"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+        {pricesError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-6 p-4 rounded-xl bg-gradient-to-r from-destructive/20 to-destructive/10 border border-destructive/30 flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <span className="text-red-300">{pricesError}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* HAS SUBSCRIPTION STATE */}
-        {hasSubscription && subscription && (
-          <>
-            {/* Subscription Summary Card */}
-            <PageItem className="mb-6">
-              <Card className="border-primary/20 bg-gradient-to-br from-card via-card to-primary/5">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Package className="w-5 h-5 text-primary" />
-                      Subscription Summary
-                    </CardTitle>
-                    {getStatusBadge(subscription.status)}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Plan Info */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-1">Current Plan</p>
-                      <p className="text-xl font-semibold text-foreground">{subscription.planName}</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-1">Billing Cycle</p>
-                      <p className="text-xl font-semibold text-foreground capitalize">{subscription.billingInterval}</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-secondary/30 border border-border">
-                      <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5" />
-                        Renewal Date
-                      </p>
-                      <p className="text-lg font-semibold text-foreground">{formatDate(subscription.renewalDate)}</p>
-                    </div>
-                  </div>
-
-                  <Separator className="bg-border/50" />
-
-                  {/* Usage Limits */}
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4" />
-                      Usage This Period
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Workflows</span>
-                          <span className="text-foreground font-medium">
-                            {subscription.usageLimits.workflowsUsed} / {subscription.usageLimits.workflowsLimit}
-                          </span>
-                        </div>
-                        <Progress 
-                          value={(subscription.usageLimits.workflowsUsed / subscription.usageLimits.workflowsLimit) * 100} 
-                          className="h-2"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Executions</span>
-                          <span className="text-foreground font-medium">
-                            {subscription.usageLimits.executionsUsed.toLocaleString()} / {subscription.usageLimits.executionsLimit.toLocaleString()}
-                          </span>
-                        </div>
-                        <Progress 
-                          value={(subscription.usageLimits.executionsUsed / subscription.usageLimits.executionsLimit) * 100} 
-                          className="h-2"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {subscription.trialEndDate && (
-                    <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-primary" />
-                        <p className="text-primary">
-                          Trial ends: {formatDate(subscription.trialEndDate)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </PageItem>
-
-            {/* Plan Management */}
-            <PageItem className="mb-6">
-              <Card>
-                <CardHeader className="pb-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Settings className="w-5 h-5 text-muted-foreground" />
-                      Manage Plan
-                    </CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <p className="text-foreground">
-                        You're currently on the <span className="font-semibold text-primary">{subscription.planName}</span> plan
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Upgrade or downgrade your plan anytime
-                      </p>
-                    </div>
-                    <div className="flex gap-3">
-                      <Button variant="outline" onClick={() => setShowChangePlanModal(true)} className="gap-2">
-                        <RefreshCw className="w-4 h-4" />
-                        Change Plan
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowCancelModal(true)}
-                        className="border-destructive/50 text-destructive hover:bg-destructive/10"
-                      >
-                        Cancel Subscription
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </PageItem>
-
-            {/* Payment Method */}
-            <PageItem className="mb-6">
-              <Card>
-                <CardHeader className="pb-4">
+      {/* Subscription Summary Card */}
+      <PageItem className="mb-6">
+        <Card className="border-primary/20 bg-gradient-to-br from-card via-card to-primary/5">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-muted-foreground" />
-                    Payment Method
+                    <Package className="w-5 h-5 text-primary" />
+                    Subscription Summary
                   </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border/50">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-8 rounded bg-background flex items-center justify-center border border-border">
-                        <CreditCard className="w-5 h-5 text-foreground" />
+                  {getStatusBadge(subscription.status)}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Plan Info */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                    <p className="text-sm text-muted-foreground mb-1">Current Plan</p>
+                    <p className="text-xl font-semibold text-foreground">{subscription.planName}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                    <p className="text-sm text-muted-foreground mb-1">Billing Cycle</p>
+                    <p className="text-xl font-semibold text-foreground capitalize">{subscription.billingInterval}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-secondary/30 border border-border">
+                    <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Renewal Date
+                    </p>
+                    <p className="text-lg font-semibold text-foreground">{formatDate(subscription.renewalDate)}</p>
+                  </div>
+                </div>
+
+                <Separator className="bg-border/50" />
+
+                {/* Usage Limits */}
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    Usage This Period
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Workflows</span>
+                        <span className="text-foreground font-medium">
+                          {subscription.usageLimits.workflowsUsed} / {subscription.usageLimits.workflowsLimit}
+                        </span>
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {subscription.paymentMethod.brand} •••• {subscription.paymentMethod.last4}
+                      <Progress 
+                        value={(subscription.usageLimits.workflowsUsed / subscription.usageLimits.workflowsLimit) * 100} 
+                        className="h-2"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Executions</span>
+                        <span className="text-foreground font-medium">
+                          {subscription.usageLimits.executionsUsed.toLocaleString()} / {subscription.usageLimits.executionsLimit.toLocaleString()}
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(subscription.usageLimits.executionsUsed / subscription.usageLimits.executionsLimit) * 100} 
+                        className="h-2"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {subscription.trialEndDate && (
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-primary" />
+                      <p className="text-primary">
+                        Trial ends: {formatDate(subscription.trialEndDate)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </PageItem>
+
+          {/* Plan Management */}
+          <PageItem className="mb-6">
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-muted-foreground" />
+                    Manage Plan
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    {isSubscribed ? (
+                      <>
+                        <p className="text-foreground">
+                          You're currently on the <span className="font-semibold text-primary">{subscription.planName}</span> plan
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Expires {subscription.paymentMethod.expiryMonth}/{subscription.paymentMethod.expiryYear}
+                          Upgrade or downgrade your plan anytime
                         </p>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={handleOpenPaymentModal}>
-                      Update
-                    </Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-foreground">
+                          You don't have an active subscription
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Subscribe to activate workflows and automations
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>Payments are securely processed by Stripe</span>
+                  <div className="flex gap-3">
+                    {isSubscribed ? (
+                      <>
+                        <Button variant="outline" onClick={() => setShowChangePlanModal(true)} className="gap-2">
+                          <RefreshCw className="w-4 h-4" />
+                          Change Plan
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowCancelModal(true)}
+                          className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                        >
+                          Cancel Subscription
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowStartSubscriptionModal(true)}
+                        className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10"
+                      >
+                        Start Subscription
+                      </Button>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            </PageItem>
+                </div>
+              </CardContent>
+            </Card>
+          </PageItem>
 
-            {/* Add-ons Management */}
-            <PageItem className="mb-6">
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    Add-ons
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Owned Add-ons */}
-                  {subscription.ownedAddons.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-medium text-muted-foreground">Purchased</h4>
-                      {subscription.ownedAddons.map((addonId) => {
-                        const addon = addons.find((a) => a.id === addonId);
-                        return addon ? (
-                          <div
-                            key={addonId}
-                            className="flex items-center justify-between p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/30"
-                          >
-                            <div className="flex items-center gap-3">
-                              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                              <div>
-                                <p className="font-medium text-foreground">{addon.name}</p>
-                                <p className="text-sm text-muted-foreground">{addon.description}</p>
-                              </div>
+          {/* Payment Method */}
+          <PageItem className="mb-6">
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-muted-foreground" />
+                  Payment Method
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-8 rounded bg-background flex items-center justify-center border border-border">
+                      <CreditCard className="w-5 h-5 text-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">
+                        {subscription.paymentMethod.brand} •••• {subscription.paymentMethod.last4}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Expires {subscription.paymentMethod.expiryMonth}/{subscription.paymentMethod.expiryYear}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={handleOpenPaymentModal}>
+                    Update
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Payments are securely processed by Stripe</span>
+                </div>
+              </CardContent>
+            </Card>
+          </PageItem>
+
+          {/* Add-ons Management */}
+          <PageItem className="mb-6">
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Add-ons
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Owned Add-ons */}
+                {subscription.ownedAddons.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Purchased</h4>
+                    {subscription.ownedAddons.map((addonId) => {
+                      const addon = addons.find((a) => a.id === addonId);
+                      return addon ? (
+                        <div
+                          key={addonId}
+                          className="flex items-center justify-between p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/30"
+                        >
+                          <div className="flex items-center gap-3">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                            <div>
+                              <p className="font-medium text-foreground">{addon.name}</p>
+                              <p className="text-sm text-muted-foreground">{addon.description}</p>
                             </div>
-                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-                              Owned
-                            </Badge>
                           </div>
-                        ) : null;
-                      })}
-                    </div>
-                  )}
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                            Owned
+                          </Badge>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                )}
 
-                  {/* Available Add-ons */}
-                  {pricesLoading ? (
+                {/* Available Add-ons */}
+                {pricesLoading ? (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Available</h4>
+                    <AddonSkeleton />
+                    <AddonSkeleton />
+                  </div>
+                ) : (
+                  addons.filter((addon) => !subscription.ownedAddons.includes(addon.id)).length > 0 && (
                     <div className="space-y-3">
                       <h4 className="text-sm font-medium text-muted-foreground">Available</h4>
-                      <AddonSkeleton />
-                      <AddonSkeleton />
+                      {addons
+                        .filter((addon) => !subscription.ownedAddons.includes(addon.id))
+                        .map((addon) => (
+                          <div
+                            key={addon.id}
+                            className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/30 transition-colors"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-foreground">{addon.name}</p>
+                              <p className="text-sm text-muted-foreground">{addon.description}</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-xl font-bold text-foreground">${addon.price}</span>
+                              <Button size="sm" onClick={() => handlePurchaseAddon(addon.id)}>
+                                Purchase
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
                     </div>
-                  ) : (
-                    addons.filter((addon) => !subscription.ownedAddons.includes(addon.id)).length > 0 && (
+                  )
+                )}
+              </CardContent>
+            </Card>
+          </PageItem>
+
+          {/* Billing History */}
+          <PageItem className="mb-8">
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg">Billing History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="invoices" className="w-full">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="invoices">Invoices</TabsTrigger>
+                    <TabsTrigger value="purchases">Purchase Log</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="invoices">
+                    {mockInvoices.length > 0 ? (
                       <div className="space-y-3">
-                        <h4 className="text-sm font-medium text-muted-foreground">Available</h4>
-                        {addons
-                          .filter((addon) => !subscription.ownedAddons.includes(addon.id))
-                          .map((addon) => (
-                            <div
-                              key={addon.id}
-                              className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/30 transition-colors"
-                            >
-                              <div className="flex-1">
-                                <p className="font-medium text-foreground">{addon.name}</p>
-                                <p className="text-sm text-muted-foreground">{addon.description}</p>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <span className="text-xl font-bold text-foreground">${addon.price}</span>
-                                <Button size="sm" onClick={() => handlePurchaseAddon(addon.id)}>
-                                  Purchase
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    )
-                  )}
-                </CardContent>
-              </Card>
-            </PageItem>
-
-            {/* Billing History */}
-            <PageItem className="mb-8">
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg">Billing History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Tabs defaultValue="invoices" className="w-full">
-                    <TabsList className="mb-4">
-                      <TabsTrigger value="invoices">Invoices</TabsTrigger>
-                      <TabsTrigger value="purchases">Purchase Log</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="invoices">
-                      {mockInvoices.length > 0 ? (
-                        <div className="space-y-3">
-                          {mockInvoices.map((invoice) => (
-                            <div
-                              key={invoice.id}
-                              className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border"
-                            >
-                              <div className="flex items-center gap-4">
-                                <div>
-                                  <p className="font-medium text-foreground">{invoice.id}</p>
-                                  <p className="text-sm text-muted-foreground">{formatDate(invoice.date)}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <span className="font-medium text-foreground">${invoice.amount}</span>
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    invoice.status === "paid"
-                                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                      : "bg-amber-500/20 text-amber-400 border-amber-500/30"
-                                  }
-                                >
-                                  {invoice.status}
-                                </Badge>
-                                <Button size="icon" variant="ghost">
-                                  <Download className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-center text-muted-foreground py-8">No invoices yet</p>
-                      )}
-                    </TabsContent>
-                    <TabsContent value="purchases">
-                      {mockPurchaseLog.length > 0 ? (
-                        <div className="space-y-3">
-                          {mockPurchaseLog.map((purchase, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border"
-                            >
+                        {mockInvoices.map((invoice) => (
+                          <div
+                            key={invoice.id}
+                            className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border"
+                          >
+                            <div className="flex items-center gap-4">
                               <div>
-                                <p className="font-medium text-foreground">{purchase.addon}</p>
-                                <p className="text-sm text-muted-foreground">{formatDate(purchase.date)}</p>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <span className="font-medium text-foreground">${purchase.amount}</span>
-                                <Badge
-                                  variant="outline"
-                                  className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                >
-                                  {purchase.status}
-                                </Badge>
+                                <p className="font-medium text-foreground">{invoice.id}</p>
+                                <p className="text-sm text-muted-foreground">{formatDate(invoice.date)}</p>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-center text-muted-foreground py-8">No purchases yet</p>
-                      )}
-                    </TabsContent>
-                  </Tabs>
-                </CardContent>
-              </Card>
-            </PageItem>
-          </>
-        )}
+                            <div className="flex items-center gap-4">
+                              <span className="font-medium text-foreground">${invoice.amount}</span>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  invoice.status === "paid"
+                                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                    : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                }
+                              >
+                                {invoice.status}
+                              </Badge>
+                              <Button size="icon" variant="ghost">
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-8">No invoices yet</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="purchases">
+                    {mockPurchaseLog.length > 0 ? (
+                      <div className="space-y-3">
+                        {mockPurchaseLog.map((purchase, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 border border-border"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">{purchase.addon}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(purchase.date)}</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="font-medium text-foreground">${purchase.amount}</span>
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                              >
+                                {purchase.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-8">No purchases yet</p>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </PageItem>
 
-        {/* Cancel Subscription Modal */}
-        <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Cancel Subscription</DialogTitle>
-              <DialogDescription>
-                This action cannot be undone. Your subscription will remain active until the end of your current billing period.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
-                <p className="text-sm text-destructive">
-                  To confirm cancellation, please type <strong>UNSUBSCRIBE</strong> below:
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmation">Confirmation</Label>
-                <Input
-                  id="confirmation"
-                  value={cancelConfirmation}
-                  onChange={(e) => setCancelConfirmation(e.target.value)}
-                  placeholder="Type UNSUBSCRIBE to confirm"
-                  className={
-                    cancelConfirmation && !isCancelConfirmValid
-                      ? "border-destructive focus-visible:ring-destructive"
-                      : ""
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="reason">Reason for cancellation (optional)</Label>
-                <Textarea
-                  id="reason"
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="Tell us why you're leaving..."
-                  className="min-h-[100px]"
-                />
-              </div>
+      {/* Cancel Subscription Modal */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Subscription</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. Your subscription will remain active until the end of your current billing period.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+              <p className="text-sm text-destructive">
+                To confirm cancellation, please type <strong>UNSUBSCRIBE</strong> below:
+              </p>
             </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCancelModal(false);
-                  setCancelConfirmation("");
-                  setCancelReason("");
-                }}
-              >
-                Keep Subscription
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleCancelSubscription}
-                disabled={!isCancelConfirmValid || loading}
-              >
-                {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Confirm Cancellation
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Change Plan Modal */}
-        <Dialog open={showChangePlanModal} onOpenChange={setShowChangePlanModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Change Your Plan</DialogTitle>
-              <DialogDescription>
-                Select a new plan. Changes will take effect at the start of your next billing cycle.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <PlanSelectionUI compact />
+            <div className="space-y-2">
+              <Label htmlFor="confirmation">Confirmation</Label>
+              <Input
+                id="confirmation"
+                value={cancelConfirmation}
+                onChange={(e) => setCancelConfirmation(e.target.value)}
+                placeholder="Type UNSUBSCRIBE to confirm"
+                className={
+                  cancelConfirmation && !isCancelConfirmValid
+                    ? "border-destructive focus-visible:ring-destructive"
+                    : ""
+                }
+              />
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowChangePlanModal(false)} disabled={changePlanLoading}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmPlanChange}
-                disabled={!selectedPlan || selectedPlan === subscription?.planId || changePlanLoading}
-                className="btn-synth"
-              >
-                {changePlanLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Confirm Change
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason for cancellation (optional)</Label>
+              <Textarea
+                id="reason"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Tell us why you're leaving..."
+                className="min-h-[100px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCancelModal(false);
+                setCancelConfirmation("");
+                setCancelReason("");
+              }}
+            >
+              Keep Subscription
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCancelSubscription}
+              disabled={!isCancelConfirmValid || loading}
+              className="border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirm Cancellation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* Payment Method Modal */}
-        <PaymentMethodModal
-          open={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          currentCard={subscription?.paymentMethod ? {
+      {/* Change Plan Modal */}
+      <Dialog open={showChangePlanModal} onOpenChange={setShowChangePlanModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Change Your Plan</DialogTitle>
+            <DialogDescription>
+              Select a new plan. Changes will take effect at the start of your next billing cycle.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <PlanSelectionUI compact />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangePlanModal(false)} disabled={changePlanLoading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmPlanChange}
+              disabled={!selectedPlan || selectedPlan === subscription.planId || changePlanLoading}
+              className="btn-synth"
+            >
+              {changePlanLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirm Change
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Start Subscription Modal */}
+      <Dialog open={showStartSubscriptionModal} onOpenChange={(open) => {
+        setShowStartSubscriptionModal(open);
+        if (open && !isSubscribed) {
+          setSelectedPlan(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Start Subscription</DialogTitle>
+            <DialogDescription>
+              Select a plan to get started with Synth.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <PlanSelectionUI compact />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStartSubscriptionModal(false)} disabled={loading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStartSubscription}
+              disabled={!selectedPlan || loading}
+              className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 bg-transparent"
+              variant="outline"
+            >
+              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Start Subscription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Method Modal */}
+      <PaymentMethodModal
+        open={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+          currentCard={{
             brand: subscription.paymentMethod.brand,
             last4: subscription.paymentMethod.last4,
             expiryMonth: subscription.paymentMethod.expiryMonth,
             expiryYear: subscription.paymentMethod.expiryYear,
-          } : null}
-          onSuccess={handlePaymentMethodUpdate}
-        />
-      </PageTransition>
-
-      {/* Sticky Checkout Footer - Only show when no subscription */}
-      {!hasSubscription && (
-        <motion.div
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
-          className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-xl border-t border-border p-4 z-50"
-        >
-          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-6">
-              {selectedPlan ? (
-                <>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Selected Plan</p>
-                    <p className="font-semibold text-foreground capitalize">
-                      {selectedPlanData?.name} - ${planTotal}/{billingInterval === "yearly" ? "year" : "month"}
-                    </p>
-                  </div>
-                  {selectedAddons.length > 0 && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Add-ons</p>
-                      <p className="font-semibold text-foreground">
-                        {selectedAddons.length} selected (+${addonsTotal})
-                      </p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-muted-foreground">Select a plan to continue</p>
-              )}
-            </div>
-            <Button
-              onClick={handleContinueToCheckout}
-              disabled={!selectedPlan}
-              className="btn-synth min-w-[200px]"
-            >
-              Continue to Checkout
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </motion.div>
-      )}
-    </AppShell>
+          }}
+        onSuccess={handlePaymentMethodUpdate}
+      />
+    </PageTransition>
   );
 }
