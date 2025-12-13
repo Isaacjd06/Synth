@@ -43,34 +43,22 @@ export async function GET(req: Request) {
 
     // 3. Handle OAuth errors (user denied access, etc.)
     if (error) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent(error)}`
-      );
+      return error(error, 400);
     }
 
     if (!code || !state) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent("Missing required parameters")}`
-      );
+      return error("Missing required parameters", 400);
     }
 
     // 4. Validate state parameter for CSRF protection
     if (!validateOAuthState(state, userId)) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent("Invalid state parameter")}`
-      );
+      return error("Invalid state parameter", 400);
     }
 
     // 5. Extract service name from state
     const serviceName = extractServiceFromState(state);
     if (!serviceName) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent("Invalid state format")}`
-      );
+      return error("Invalid state format", 400);
     }
 
     // 6. Double-check plan access before storing connection
@@ -82,10 +70,7 @@ export async function GET(req: Request) {
     const accessCheck = requireIntegrationAccess(effectivePlan, serviceName);
     if (accessCheck) {
       logError("app/api/connections/callback (plan check failed)", new Error(accessCheck.error));
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent(accessCheck.error)}`
-      );
+      return error(accessCheck.error, 403);
     }
 
     // 7. Get redirect URI (must match the one used in initiation)
@@ -148,17 +133,16 @@ export async function GET(req: Request) {
       connection_type: "OAuth",
     });
 
-    // 12. Redirect to connections page with success message
-    return NextResponse.redirect(
-      `${baseUrl}/app/connections?connected=${encodeURIComponent(serviceName)}`
-    );
+    // 12. Return success response
+    return success({
+      message: "Connection established successfully",
+      service: serviceName,
+      connection_id: connection.id,
+    });
   } catch (err: unknown) {
     logError("app/api/connections/callback", err);
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     const errorMessage = err instanceof Error ? err.message : "connection_failed";
-    return NextResponse.redirect(
-      `${baseUrl}/app/connections?error=${encodeURIComponent(errorMessage)}`
-    );
+    return error(errorMessage, 500);
   }
 }
 

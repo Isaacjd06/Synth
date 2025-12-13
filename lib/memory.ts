@@ -135,16 +135,33 @@ export async function storeMemory(
   relevanceScore?: number | null,
   metadata?: Prisma.InputJsonValue
 ): Promise<void> {
-  await prisma.memory.create({
-    data: {
-      user_id: userId,
-      context_type: contextType,
-      content: content as Prisma.InputJsonValue,
-      relevance_score: relevanceScore ?? null,
-      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
-      last_accessed: new Date(),
-    },
-  });
+  // Verify prisma.memory is available
+  if (!prisma.memory) {
+    throw new Error("Prisma memory model is not available. Please ensure Prisma client is properly generated.");
+  }
+
+  try {
+    await prisma.memory.create({
+      data: {
+        user_id: userId,
+        context_type: contextType,
+        content: content as Prisma.InputJsonValue,
+        relevance_score: relevanceScore ?? null,
+        metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
+        last_accessed: new Date(),
+      },
+    });
+  } catch (error) {
+    // Provide more informative error message
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[MEMORY] Error storing memory:", {
+      error: errorMessage,
+      userId,
+      contextType,
+      hasPrismaMemory: !!prisma.memory,
+    });
+    throw new Error(`Failed to store memory: ${errorMessage}`);
+  }
 }
 
 /**

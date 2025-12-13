@@ -75,7 +75,8 @@ export async function GET(req: Request) {
     let hasPaymentMethod = false;
     let billingPeriod: "monthly" | "yearly" | null = null;
 
-    if (user.stripe_customer_id) {
+    // Only attempt Stripe operations if Stripe is configured
+    if (user.stripe_customer_id && stripe) {
       try {
         // Fetch Stripe customer to check for default payment method
         const customer = await stripe.customers.retrieve(user.stripe_customer_id, {
@@ -123,6 +124,9 @@ export async function GET(req: Request) {
         });
         // Continue with hasPaymentMethod = false
       }
+    } else if (user.stripe_customer_id && !stripe) {
+      // Stripe is not configured, but user has a customer ID - use database fallback
+      hasPaymentMethod = user.has_active_payment_method || false;
     }
 
     // 4. Calculate plan change eligibility (14-day rule)
@@ -204,19 +208,36 @@ export async function GET(req: Request) {
       userId: (await auth())?.user?.id,
     });
 
-    // Return safe error message without exposing internal details
-    const errorMessage =
-      error instanceof Error && error.message.includes("Stripe")
-        ? "Failed to fetch billing state. Please try again."
-        : "Internal server error";
-
+    // Return a safe fallback response instead of 500 error
+    // This prevents app-wide crashes when billing data is unavailable
+    // The frontend will handle the degraded state gracefully
     return NextResponse.json(
       {
-        success: false,
-        code: "INTERNAL_ERROR",
-        message: errorMessage,
+        plan: null,
+        current_plan: null,
+        next_plan: null,
+        subscriptionStatus: "UNSUBSCRIBED",
+        subscriptionStatusLegacy: null,
+        subscriptionRenewalAt: null,
+        trialEndsAt: null,
+        addOns: [],
+        stripeCustomerId: null,
+        hasPaymentMethod: false,
+        billingPeriod: null,
+        can_change_plan: false,
+        days_until_next_change: null,
+        usage_limits: {
+          workflows: {
+            current: 0,
+            max: null,
+          },
+          executions: {
+            current: 0,
+            max: null,
+          },
+        },
       },
-      { status: 500 }
+      { status: 200 } // Return 200 with safe defaults instead of 500
     );
   }
 }

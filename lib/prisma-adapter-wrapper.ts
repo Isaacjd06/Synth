@@ -10,8 +10,34 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import type { Adapter, AdapterUser } from "next-auth/adapters";
 
-// Create the base adapter
-const baseAdapter = PrismaAdapter(prisma) as Adapter;
+// Create the base adapter with error handling
+let baseAdapter: Adapter;
+try {
+  baseAdapter = PrismaAdapter(prisma) as Adapter;
+  
+  // Verify baseAdapter was created successfully
+  if (!baseAdapter) {
+    throw new Error("PrismaAdapter returned undefined");
+  }
+} catch (error) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error("[AUTH] Failed to create PrismaAdapter:", errorMessage);
+  
+  // Log available Prisma models for debugging
+  try {
+    const modelKeys = Object.keys(prisma).filter(
+      key => !key.startsWith('$') && !key.startsWith('_') && typeof (prisma as any)[key] === 'object'
+    );
+    console.error("[AUTH] Available Prisma models:", modelKeys);
+  } catch {
+    // Ignore errors when checking models
+  }
+  
+  throw new Error(
+    `Failed to initialize PrismaAdapter: ${errorMessage}. ` +
+    "Make sure Prisma Client has been generated and Session, Account, and VerificationToken models exist in your schema."
+  );
+}
 
 // Custom adapter that maps fields
 export const customPrismaAdapter: Adapter = {
@@ -126,13 +152,14 @@ export const customPrismaAdapter: Adapter = {
       image: account.user.avatar_url,
     } as AdapterUser;
   },
-  linkAccount: baseAdapter.linkAccount?.bind(baseAdapter),
-  createSession: baseAdapter.createSession?.bind(baseAdapter),
-  getSessionAndUser: baseAdapter.getSessionAndUser?.bind(baseAdapter),
-  updateSession: baseAdapter.updateSession?.bind(baseAdapter),
-  deleteSession: baseAdapter.deleteSession?.bind(baseAdapter),
-  createVerificationToken: baseAdapter.createVerificationToken?.bind(baseAdapter),
-  useVerificationToken: baseAdapter.useVerificationToken?.bind(baseAdapter),
-  deleteUser: baseAdapter.deleteUser?.bind(baseAdapter),
-  unlinkAccount: baseAdapter.unlinkAccount?.bind(baseAdapter),
+  // Bind adapter methods safely
+  linkAccount: baseAdapter.linkAccount ? baseAdapter.linkAccount.bind(baseAdapter) : undefined,
+  createSession: baseAdapter.createSession ? baseAdapter.createSession.bind(baseAdapter) : undefined,
+  getSessionAndUser: baseAdapter.getSessionAndUser ? baseAdapter.getSessionAndUser.bind(baseAdapter) : undefined,
+  updateSession: baseAdapter.updateSession ? baseAdapter.updateSession.bind(baseAdapter) : undefined,
+  deleteSession: baseAdapter.deleteSession ? baseAdapter.deleteSession.bind(baseAdapter) : undefined,
+  createVerificationToken: baseAdapter.createVerificationToken ? baseAdapter.createVerificationToken.bind(baseAdapter) : undefined,
+  useVerificationToken: baseAdapter.useVerificationToken ? baseAdapter.useVerificationToken.bind(baseAdapter) : undefined,
+  deleteUser: baseAdapter.deleteUser ? baseAdapter.deleteUser.bind(baseAdapter) : undefined,
+  unlinkAccount: baseAdapter.unlinkAccount ? baseAdapter.unlinkAccount.bind(baseAdapter) : undefined,
 };

@@ -8,6 +8,12 @@ const globalForPrisma = global as unknown as {
 };
 
 // Initialize connection pool
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL environment variable is not set. Please set it in your .env file."
+  );
+}
+
 const pool = globalForPrisma.pool || new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 

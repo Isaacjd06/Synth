@@ -55,17 +55,41 @@ export async function GET() {
           requiredPlan = "agency";
         }
 
-        // Extract steps preview from intent or description
-        const stepsPreview = workflow.intent || workflow.description || "No preview available";
+        // Extract category and steps preview from intent
+        let category = "Productivity"; // Default category
+        let stepsPreview = workflow.description || "No preview available";
+        
+        try {
+          // Try to parse intent as JSON (new format)
+          if (workflow.intent) {
+            const intentData = JSON.parse(workflow.intent);
+            if (intentData.category) {
+              category = intentData.category;
+            }
+            if (intentData.actionsDescription) {
+              stepsPreview = intentData.actionsDescription;
+            } else if (intentData.longDescription) {
+              stepsPreview = intentData.longDescription;
+            }
+          } else {
+            // Fallback: use intent as string (old format)
+            stepsPreview = workflow.intent || workflow.description || "No preview available";
+          }
+        } catch {
+          // If parsing fails, use intent as string (backward compatibility)
+          stepsPreview = workflow.intent || workflow.description || "No preview available";
+        }
 
         return {
           id: workflow.id,
           name: workflow.name,
-          category: "Productivity", // Placeholder - could be extracted from metadata
+          category,
           description: workflow.description || "No description",
           stepsPreview,
           active: workflow.active,
+          is_active: workflow.active, // Alias for UI compatibility
           executionCount,
+          executions_count: executionCount, // Alias for UI compatibility
           requiredPlan,
         };
       })

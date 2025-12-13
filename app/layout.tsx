@@ -1,29 +1,19 @@
+import type { Metadata } from "next";
 import "./globals.css";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
-import type { ReactNode } from "react";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Providers } from "./providers";
 
-const inter = Inter({ subsets: ["latin"] });
-const plusJakartaSans = Plus_Jakarta_Sans({ 
-  subsets: ["latin"],
-  variable: "--font-plus-jakarta",
-});
-
-export const metadata = {
+export const metadata: Metadata = {
   title: "Synth",
-  description: "Synth AI - Workflow Automation Platform",
+  description: "Synth API",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="en" className="overflow-x-hidden">
-      <body className={`${inter.className} ${plusJakartaSans.variable} overflow-x-hidden`}>
-        <Providers>
-          {children}
-          <Sonner />
-        </Providers>
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

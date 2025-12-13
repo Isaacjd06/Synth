@@ -295,11 +295,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return url;
         }
         
-        // If it's an error page, redirect to dashboard instead
+        // If it's an error page, redirect to home instead
         if (url.includes("/api/auth/error")) {
-          console.log("[AUTH] redirect: Error page detected, redirecting to dashboard instead");
+          console.log("[AUTH] redirect: Error page detected, redirecting to home instead");
           const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || baseUrl || "http://localhost:3000";
-          return `${appUrl.replace(/\/$/, "")}/dashboard`;
+          return `${appUrl.replace(/\/$/, "")}/`;
         }
         
         // Get base URL from environment or use provided baseUrl
@@ -325,15 +325,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Invalid URL, fall through to default
         }
         
-        // Default: redirect to dashboard after successful signin
-        const dashboardUrl = `${cleanAppUrl}/dashboard`;
-        console.log("[AUTH] redirect: Default redirect to dashboard:", dashboardUrl);
-        return dashboardUrl;
+        // Default: redirect to home after successful signin
+        const homeUrl = `${cleanAppUrl}/`;
+        console.log("[AUTH] redirect: Default redirect to home:", homeUrl);
+        return homeUrl;
       } catch (error) {
-        // If redirect callback fails, fall back to dashboard
+        // If redirect callback fails, fall back to home
         console.error("[AUTH] redirect: Error in redirect callback:", error);
         const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || baseUrl || "http://localhost:3000";
-        return `${appUrl.replace(/\/$/, "")}/dashboard`;
+        return `${appUrl.replace(/\/$/, "")}/`;
       }
     },
   },

@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30 days
     });
 
-    // Redirect to dashboard or callback URL
-    const callbackUrl = request.nextUrl.searchParams.get("callbackUrl") || "/dashboard";
+    // Redirect to home page or callback URL
+    const callbackUrl = request.nextUrl.searchParams.get("callbackUrl") || "/";
     const redirectUrl = new URL(callbackUrl, request.url);
 
     return NextResponse.redirect(redirectUrl);

@@ -40,10 +40,7 @@ export async function GET(req: Request) {
     const service = searchParams.get("service");
 
     if (!service) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent("Please select a service to connect")}`
-      );
+      return error("Please select a service to connect", 400);
     }
 
     // 4. Check plan access
@@ -55,10 +52,7 @@ export async function GET(req: Request) {
 
     const accessCheck = requireIntegrationAccess(effectivePlan, service);
     if (accessCheck) {
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      return NextResponse.redirect(
-        `${baseUrl}/app/connections?error=${encodeURIComponent(accessCheck.error)}`
-      );
+      return error(accessCheck.error, 403);
     }
 
     // 5. Get base URL for callback
@@ -82,11 +76,7 @@ export async function GET(req: Request) {
 
     logError("app/api/connections/start", err);
     
-    // Redirect to connections page with user-friendly error
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    return NextResponse.redirect(
-      `${baseUrl}/app/connections?error=${encodeURIComponent("Unable to start connection. Please try again or contact support.")}`
-    );
+    return error("Unable to start connection. Please try again or contact support.", 500);
   }
 }
 

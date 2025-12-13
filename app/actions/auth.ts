@@ -8,7 +8,7 @@ export async function googleSignIn() {
   // Or throws NEXT_REDIRECT when redirecting
   // We need to handle this properly
   const result = await signIn("google", {
-    redirectTo: "/dashboard",
+    redirectTo: "/",
     redirect: true, // Let NextAuth handle the redirect
   });
 
